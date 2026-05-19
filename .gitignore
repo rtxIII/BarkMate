@@ -2,7 +2,6 @@
 .agent
 bark-server
 Bark
-doc/
 prototype/
 MoeMemos
 *.mode*v*
