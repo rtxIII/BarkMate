@@ -1,0 +1,37 @@
+disabled_rules:
+  - trailing_whitespace
+  - line_length
+  - todo
+  - multiple_closures_with_trailing_closure
+
+opt_in_rules:
+  - force_unwrapping
+  - empty_count
+  - closure_spacing
+  - explicit_init
+  - first_where
+  - last_where
+  - sorted_first_last
+  - unused_import
+
+excluded:
+  - Packages/Models/.build
+  - Packages/Store/.build
+  - Packages/BarkService/.build
+  - Packages/MemoKit/.build
+  - Packages/DesignSystem/.build
+  - BarkMate.xcodeproj
+  - DerivedData
+
+identifier_name:
+  min_length: 2
+  excluded:
+    - id
+    - to
+    - at
+
+type_name:
+  min_length: 3
+  max_length: 50
+
+reporter: "github-actions-logging"

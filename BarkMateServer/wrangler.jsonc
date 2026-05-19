@@ -1,0 +1,38 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "barkmate-server",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-20",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	// KV: device_key -> device_token (APNs hex)
+	// Run `pnpm wrangler kv namespace create DEVICES` and paste the id below.
+	// Run with --preview for the preview_id.
+	"kv_namespaces": [
+		{
+			"binding": "DEVICES",
+			"id": "89e0090648d341169c61dfe65bf51eb9",
+			"preview_id": "4a357e38fa3b4400b56059abdf442266"
+		}
+	],
+	// Public, non-secret config. Secrets (APNS_PRIVATE_KEY) go via `wrangler secret put`.
+	"vars": {
+		"APNS_TEAM_ID": "STLD27C5KT",
+		"APNS_KEY_ID": "359FJ8J5G9",
+		"APNS_TOPIC": "com.barkmate.ios",
+		"APNS_ENV": "sandbox"
+	},
+	"observability": {
+		"enabled": true
+	},
+	// 自定义域名（custom_domain）— Cloudflare 自动创建 DNS + TLS。
+	// 前提：we2.xyz 已是当前 Cloudflare 账号下的 zone。
+	"routes": [
+		{
+			"zone_name": "we2.xyz",
+			"pattern": "barkmate.we2.xyz",
+			"custom_domain": true
+		}
+	]
+}
