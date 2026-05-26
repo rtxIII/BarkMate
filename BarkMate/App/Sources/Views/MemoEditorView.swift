@@ -3,7 +3,7 @@
 //  BarkMate
 //
 //  Phase 3B: 全屏备忘录编辑器。Markdown body + 草稿自动保存。
-//  Phase 3C: PhotosPicker 附件（保存为 Resource 链接到 Item）。
+//  Phase 3C: PhotosPicker 附件（保存为 Resource 链接到 Memo）。
 //
 
 import SwiftUI
@@ -191,7 +191,7 @@ struct MemoEditorView: View {
         let trimmedTitle = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedBody.isEmpty || !trimmedTitle.isEmpty else { return }
 
-        let memo = ItemFactory.memo(title: trimmedTitle, body: trimmedBody)
+        let memo = MemoFactory.memo(title: trimmedTitle, body: trimmedBody)
         modelContext.insert(memo)
         memo.resources = attachments.map { pending in
             Resource(
@@ -257,11 +257,11 @@ private struct AttachmentThumb: View {
     }
 }
 
-private enum ItemFactory {
-    static func memo(title: String, body: String) -> Item {
+private enum MemoFactory {
+    static func memo(title: String, body: String) -> Memo {
         let tags = extractTags(from: body)
-        return Item(
-            type: .memo,
+        return Memo(
+            source: .manual,
             title: title.isEmpty ? nil : title,
             body: body,
             bodyType: .markdown,

@@ -41,6 +41,12 @@ extension Container {
             .singleton
     }
 
+    /// 通知 / APNs 健康状态(用于 Setup tab 顶部 banner)。
+    var notificationStatusStore: Factory<NotificationStatusStore> {
+        self { NotificationStatusStore() }
+            .singleton
+    }
+
     /// Bark 服务器 HTTP 客户端。
     var barkClient: Factory<BarkClientProtocol> {
         self { BarkClient() }
@@ -53,7 +59,8 @@ extension Container {
             PushRegistrar(
                 modelContainer: Container.shared.sharedModelContainer(),
                 barkClient: Container.shared.barkClient(),
-                tokenStore: Container.shared.deviceTokenStore()
+                tokenStore: Container.shared.deviceTokenStore(),
+                statusStore: Container.shared.notificationStatusStore()
             )
         }
         .singleton

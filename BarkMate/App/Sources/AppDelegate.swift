@@ -12,11 +12,13 @@
 import UIKit
 import UserNotifications
 import Factory
+import Store
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
 
     @Injected(\.pushRegistrar) private var pushRegistrar: PushRegistrar
     @Injected(\.pendingQueueDrainer) private var pendingQueueDrainer: PendingQueueDrainer
+    @Injected(\.notificationStatusStore) private var statusStore: NotificationStatusStore
 
     func application(
         _ application: UIApplication,
@@ -40,6 +42,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         print("[BarkMate] APNs device token received: \(hex.prefix(8))... (len=\(hex.count))")
         Task { @MainActor in
             await pushRegistrar.handleDeviceToken(hex)
+            // PushRegistrar 内部会按 server 健康度更新 status;此处兜底为 ok。
+            if statusStore.current().kind != .serverUnreachable {
+                statusStore.save(NotificationStatus(kind: .ok))
+            }
             print("[BarkMate] handleDeviceToken finished")
         }
     }
@@ -50,6 +56,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) {
         print("[BarkMate] ❌ APNs registration failed: \(error.localizedDescription)")
         print("[BarkMate]    full error: \(error)")
+        statusStore.save(NotificationStatus(
+            kind: .apnsRegistrationFailed,
+            detail: error.localizedDescription
+        ))
     }
 
     @MainActor
@@ -61,9 +71,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             if granted {
                 application.registerForRemoteNotifications()
                 print("[BarkMate] registerForRemoteNotifications called, waiting for callback...")
+            } else {
+                statusStore.save(NotificationStatus(
+                    kind: .authorizationDenied,
+                    detail: "Notification permission was denied"
+                ))
             }
         } catch {
             print("[BarkMate] ❌ Notification authorization error: \(error.localizedDescription)")
+            statusStore.save(NotificationStatus(
+                kind: .authorizationDenied,
+                detail: error.localizedDescription
+            ))
         }
     }
 }

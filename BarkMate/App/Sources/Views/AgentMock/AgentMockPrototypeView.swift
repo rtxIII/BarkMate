@@ -3,8 +3,18 @@
 //  BarkMate
 //
 //  SwiftUI mock prototype for the v0.3 Agent Dashboard direction.
-//  This file intentionally uses local mock structs instead of SwiftData so the
-//  interaction and visual density can be evaluated before Phase 2 data plumbing.
+//
+//  ⚠️ 视觉契约 / DO NOT MODIFY
+//  ---------------------------------------------------------------------------
+//  此文件冻结为 V0.3 Phase 3 视觉对齐基线 (见 plan.md §3.0.4)。所有 Agent /
+//  History / Setup / Search / Settings tab 的真实实现 (`AgentDashboardView` 等)
+//  必须以本文件为视觉契约源头。
+//
+//  允许的例外:
+//    - 重命名 file-private 符号 (`mockProtoCardPadding` / `mockProtoSummaryTextStyle`
+//      / `Color(mockHex:)`) 以避开与 `DesignSystem` 同名 public API 的 overload
+//      ambiguity — 这是兼容性调整,不修改任何视觉契约。
+//  其余任何视觉、间距、字体、颜色、组件结构变更必须经 PRD review。
 //
 
 import SwiftUI
@@ -168,7 +178,7 @@ private struct AgentHeroCard: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [MockPalette.ink, Color(hex: 0x273843)],
+                        colors: [MockPalette.ink, Color(mockHex: 0x273843)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -367,7 +377,7 @@ private struct DetailHero: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [MockPalette.ink, Color(hex: 0x273843)],
+                        colors: [MockPalette.ink, Color(mockHex: 0x273843)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -435,7 +445,7 @@ private struct SummaryPanel: View {
             switch state {
             case .ready:
                 Text("点击按钮后模拟本地摘要。真实版本会在支持设备上调用 Apple Intelligence，不支持时仍显示原始 step。")
-                    .summaryTextStyle()
+                    .mockProtoSummaryTextStyle()
             case .loading:
                 VStack(alignment: .leading, spacing: 8) {
                     SkeletonLine(width: 1.0)
@@ -444,7 +454,7 @@ private struct SummaryPanel: View {
                 }
             case .generated:
                 Text(task.summary)
-                    .summaryTextStyle()
+                    .mockProtoSummaryTextStyle()
             }
         }
         .padding(15)
@@ -512,7 +522,7 @@ private struct AgentMockSetupView: View {
                     Pill("curl template")
                     Text(curl)
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color(hex: 0xEAF0E9))
+                        .foregroundStyle(Color(mockHex: 0xEAF0E9))
                         .lineSpacing(3)
                         .padding(13)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -525,7 +535,7 @@ private struct AgentMockSetupView: View {
                             .buttonStyle(SecondaryCapsuleButtonStyle())
                     }
                 }
-                .mockCardPadding()
+                .mockProtoCardPadding()
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("关键字段")
@@ -535,7 +545,7 @@ private struct AgentMockSetupView: View {
                     FieldExplainer(name: "agent_status", value: "running / waiting_input / blocked / done / failed")
                     FieldExplainer(name: "progress", value: "3/7 或 45%")
                 }
-                .mockCardPadding()
+                .mockProtoCardPadding()
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("旧 Bark 兼容")
@@ -544,7 +554,7 @@ private struct AgentMockSetupView: View {
                         .font(.subheadline)
                         .foregroundStyle(MockPalette.ink.opacity(0.62))
                 }
-                .mockCardPadding()
+                .mockProtoCardPadding()
             }
             .padding(18)
             .padding(.bottom, 30)
@@ -571,7 +581,7 @@ private struct SetupHero: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .fill(LinearGradient(colors: [MockPalette.ink, Color(hex: 0x273843)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(LinearGradient(colors: [MockPalette.ink, Color(mockHex: 0x273843)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .overlay(alignment: .topTrailing) {
                     Circle()
                         .fill(MockPalette.yellow.opacity(0.34))
@@ -668,7 +678,7 @@ private struct SearchResultRow: View {
                 StatusBadge(status: status, compact: true)
             }
         }
-        .mockCardPadding()
+        .mockProtoCardPadding()
     }
 }
 
@@ -737,7 +747,7 @@ private struct HistoryHero: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LinearGradient(colors: [MockPalette.ink, Color(hex: 0x273843)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .background(LinearGradient(colors: [MockPalette.ink, Color(mockHex: 0x273843)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 30, style: .continuous))
     }
 }
 
@@ -756,7 +766,7 @@ private struct HistoryRow: View {
             Spacer()
             Pill(item.kind)
         }
-        .mockCardPadding()
+        .mockProtoCardPadding()
     }
 }
 
@@ -776,7 +786,7 @@ private struct HistoryMiniRow: View {
             Spacer()
             Pill(item.kind)
         }
-        .mockCardPadding()
+        .mockProtoCardPadding()
     }
 }
 
@@ -824,7 +834,7 @@ private struct SettingRow: View {
             Spacer()
             Pill(badge)
         }
-        .mockCardPadding()
+        .mockProtoCardPadding()
     }
 }
 
@@ -847,7 +857,7 @@ private struct SettingToggleRow: View {
                 .labelsHidden()
                 .tint(MockPalette.ink)
         }
-        .mockCardPadding()
+        .mockProtoCardPadding()
     }
 }
 
@@ -872,7 +882,7 @@ private struct LiveActivityMockCard: View {
         }
         .padding(15)
         .background(
-            LinearGradient(colors: [MockPalette.ink, Color(hex: 0x273843)], startPoint: .topLeading, endPoint: .bottomTrailing),
+            LinearGradient(colors: [MockPalette.ink, Color(mockHex: 0x273843)], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 26, style: .continuous)
         )
     }
@@ -961,7 +971,7 @@ private struct MockScreenBackground: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color(hex: 0xFFF8EB), Color(hex: 0xF1E7D6), Color(hex: 0xE7DAC8)],
+                colors: [Color(mockHex: 0xFFF8EB), Color(mockHex: 0xF1E7D6), Color(mockHex: 0xE7DAC8)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -1052,7 +1062,7 @@ private struct MockSearchFieldStyle: TextFieldStyle {
 }
 
 private extension View {
-    func mockCardPadding() -> some View {
+    func mockProtoCardPadding() -> some View {
         self
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1061,7 +1071,7 @@ private extension View {
             .shadow(color: MockPalette.ink.opacity(0.05), radius: 12, x: 0, y: 6)
     }
 
-    func summaryTextStyle() -> some View {
+    func mockProtoSummaryTextStyle() -> some View {
         self
             .font(.system(size: 13, weight: .medium))
             .lineSpacing(3)
@@ -1072,16 +1082,16 @@ private extension View {
 // MARK: - Mock data
 
 private enum MockPalette {
-    static let ink = Color(hex: 0x121A20)
-    static let paperHot = Color(hex: 0xFFF8EC)
-    static let paperDeep = Color(hex: 0xE2D4BF)
-    static let blue = Color(hex: 0x246BFE)
-    static let yellow = Color(hex: 0xEAB33D)
-    static let orange = Color(hex: 0xEE6F2F)
-    static let green = Color(hex: 0x2CA462)
-    static let red = Color(hex: 0xD94735)
-    static let gray = Color(hex: 0x737B71)
-    static let cyan = Color(hex: 0x1EA5B5)
+    static let ink = Color(mockHex: 0x121A20)
+    static let paperHot = Color(mockHex: 0xFFF8EC)
+    static let paperDeep = Color(mockHex: 0xE2D4BF)
+    static let blue = Color(mockHex: 0x246BFE)
+    static let yellow = Color(mockHex: 0xEAB33D)
+    static let orange = Color(mockHex: 0xEE6F2F)
+    static let green = Color(mockHex: 0x2CA462)
+    static let red = Color(mockHex: 0xD94735)
+    static let gray = Color(mockHex: 0x737B71)
+    static let cyan = Color(mockHex: 0x1EA5B5)
 }
 
 private enum MockAgentStatus: String, Hashable, CaseIterable {
@@ -1413,12 +1423,12 @@ private enum MockData {
 }
 
 private extension Color {
-    init(hex: UInt, alpha: Double = 1.0) {
+    init(mockHex: UInt, alpha: Double = 1.0) {
         self.init(
             .sRGB,
-            red: Double((hex >> 16) & 0xff) / 255.0,
-            green: Double((hex >> 8) & 0xff) / 255.0,
-            blue: Double(hex & 0xff) / 255.0,
+            red: Double((mockHex >> 16) & 0xff) / 255.0,
+            green: Double((mockHex >> 8) & 0xff) / 255.0,
+            blue: Double(mockHex & 0xff) / 255.0,
             opacity: alpha
         )
     }

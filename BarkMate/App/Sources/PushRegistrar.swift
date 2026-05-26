@@ -22,15 +22,18 @@ final class PushRegistrar {
     private let modelContainer: ModelContainer
     private let barkClient: BarkClientProtocol
     private let tokenStore: DeviceTokenStore
+    private let statusStore: NotificationStatusStore
 
     nonisolated init(
         modelContainer: ModelContainer,
         barkClient: BarkClientProtocol,
-        tokenStore: DeviceTokenStore
+        tokenStore: DeviceTokenStore,
+        statusStore: NotificationStatusStore
     ) {
         self.modelContainer = modelContainer
         self.barkClient = barkClient
         self.tokenStore = tokenStore
+        self.statusStore = statusStore
     }
 
     /// 启动时调用：若没有任何 Server 则插入默认服务器（key 留空、状态 pending）。
@@ -68,21 +71,36 @@ final class PushRegistrar {
             servers = try context.fetch(FetchDescriptor<Server>())
         } catch {
             print("[PushRegistrar] ❌ fetch servers failed: \(error)")
+            statusStore.save(NotificationStatus(
+                kind: .serverUnreachable,
+                detail: "Failed to enumerate servers: \(error.localizedDescription)"
+            ))
             return
         }
         print("[PushRegistrar] registering with \(servers.count) server(s)")
 
+        var anyFailed = false
         for server in servers {
-            await register(server: server, token: token, context: context)
+            let success = await register(server: server, token: token, context: context)
+            if !success { anyFailed = true }
+        }
+        if anyFailed {
+            statusStore.save(NotificationStatus(
+                kind: .serverUnreachable,
+                detail: "One or more servers failed to register. Open Servers to retry."
+            ))
+        } else if !servers.isEmpty {
+            statusStore.save(NotificationStatus(kind: .ok))
         }
     }
 
-    private func register(server: Server, token: String, context: ModelContext) async {
+    @discardableResult
+    private func register(server: Server, token: String, context: ModelContext) async -> Bool {
         guard let url = URL(string: server.address) else {
             print("[PushRegistrar] ❌ invalid server URL: \(server.address)")
             server.state = .error
             try? context.save()
-            return
+            return false
         }
 
         let existingKey: String? = server.key.isEmpty ? nil : server.key
@@ -98,10 +116,12 @@ final class PushRegistrar {
             server.lastSyncedAt = .now
             try context.save()
             print("[PushRegistrar] ✅ registered, key=\(assignedKey)")
+            return true
         } catch {
             server.state = .error
             try? context.save()
             print("[PushRegistrar] ❌ register failed: \(error)")
+            return false
         }
     }
 }
