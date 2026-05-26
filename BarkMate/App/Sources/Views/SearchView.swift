@@ -2,7 +2,9 @@
 //  SearchView.swift
 //  BarkMate
 //
-//  Phase 4-Core 搜索：内存过滤 (SearchEngine) + 类型/标签/分组 chip 过滤 + 高亮。
+//  V0.3 Phase 3.5 / 4.11 Search tab。MockSearchFieldStyle + ChipButtonStyle scope chips +
+//  真过滤 pickers (status / agent / dateRange) + 三表联合搜索结果。数据走
+//  BarkService.SearchEngine,视觉对齐 AgentMockSearchView。
 //
 
 import SwiftUI
@@ -13,181 +15,277 @@ import DesignSystem
 
 struct SearchView: View {
 
-    @Query(
-        filter: #Predicate<Item> { $0.isArchived == false },
-        sort: \Item.createdAt,
-        order: .reverse
-    )
-    private var items: [Item]
+    @Environment(\.modelContext) private var modelContext
 
     @State private var queryText: String = ""
-    @State private var selectedTypes: Set<ItemType> = []
-    @State private var selectedTags: Set<String> = []
-    @State private var selectedGroups: Set<String> = []
+    @State private var selectedScope: ScopeChip = .all
+    @State private var statusFilter: AgentStatusFilter = .all
+    @State private var agentFilter: String? = nil
+    @State private var dateFilter: DateRangeFilter = .all
+    @State private var results: [SearchResult] = []
+    @State private var facets: SearchEngine.Facets = .init(tags: [], agentIDs: [])
 
     var body: some View {
-        VStack(spacing: 0) {
-            filterBar
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                TextField("Search agents, steps, memos", text: $queryText)
+                    .textFieldStyle(MockSearchFieldStyle())
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
 
-            if filteredItems.isEmpty {
-                ContentUnavailableView(
-                    "No results",
-                    systemImage: "magnifyingglass",
-                    description: Text(queryText.isEmpty ? "Try a keyword or filter." : "Nothing matched “\(queryText)”.")
-                )
-            } else {
-                resultList
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(ScopeChip.allCases) { scope in
+                            Button(scope.title) { selectedScope = scope }
+                                .buttonStyle(ChipButtonStyle(isSelected: selectedScope == scope))
+                        }
+                    }
+                }
+
+                filterRow
+
+                if queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                    !hasActiveFilters {
+                    emptyState
+                } else if results.isEmpty {
+                    noResults
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(results, id: \.id) { result in
+                            SearchResultRow(result: result, query: queryText)
+                        }
+                    }
+                }
             }
+            .padding(18)
+            .padding(.bottom, 30)
         }
+        .background(MockScreenBackground())
         .navigationTitle("Search")
-        .searchable(text: $queryText, placement: .navigationBarDrawer(displayMode: .always))
+        .onAppear { loadFacets() }
+        .onChange(of: queryText) { _, _ in runSearch() }
+        .onChange(of: selectedScope) { _, _ in runSearch() }
+        .onChange(of: statusFilter) { _, _ in runSearch() }
+        .onChange(of: agentFilter) { _, _ in runSearch() }
+        .onChange(of: dateFilter) { _, _ in runSearch() }
     }
 
-    // MARK: - Subviews
-
-    private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BarkTheme.Spacing.sm) {
-                Menu {
-                    ForEach(ItemType.allCases, id: \.self) { type in
-                        Button {
-                            toggleType(type)
-                        } label: {
-                            Label(typeLabel(type), systemImage: selectedTypes.contains(type) ? "checkmark.circle.fill" : "circle")
-                        }
-                    }
-                } label: {
-                    chipLabel("Type", count: selectedTypes.count)
-                }
-
-                if !facets.tags.isEmpty {
-                    Menu {
-                        ForEach(facets.tags, id: \.self) { tag in
-                            Button {
-                                toggleTag(tag)
-                            } label: {
-                                Label("#\(tag)", systemImage: selectedTags.contains(tag) ? "checkmark.circle.fill" : "circle")
-                            }
-                        }
-                    } label: {
-                        chipLabel("Tags", count: selectedTags.count)
+    @ViewBuilder
+    private var filterRow: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Picker("Status", selection: $statusFilter) {
+                    ForEach(AgentStatusFilter.allCases) { f in
+                        Text(f.label).tag(f)
                     }
                 }
-
-                if !facets.groups.isEmpty {
-                    Menu {
-                        ForEach(facets.groups, id: \.self) { group in
-                            Button {
-                                toggleGroup(group)
-                            } label: {
-                                Label(group, systemImage: selectedGroups.contains(group) ? "checkmark.circle.fill" : "circle")
-                            }
-                        }
-                    } label: {
-                        chipLabel("Groups", count: selectedGroups.count)
-                    }
-                }
-
-                if hasFilters {
-                    Button("Clear", role: .destructive) {
-                        selectedTypes.removeAll()
-                        selectedTags.removeAll()
-                        selectedGroups.removeAll()
-                    }
-                    .font(.caption)
-                }
+            } label: {
+                Pill("status: \(statusFilter.label)")
             }
-            .padding(.horizontal, BarkTheme.Spacing.lg)
-            .padding(.vertical, BarkTheme.Spacing.sm)
+
+            Menu {
+                Button("all") { agentFilter = nil }
+                ForEach(facets.agentIDs, id: \.self) { agentID in
+                    Button(agentID) { agentFilter = agentID }
+                }
+            } label: {
+                Pill("agent: \(agentFilter ?? "all")")
+            }
+
+            Menu {
+                Picker("Date", selection: $dateFilter) {
+                    ForEach(DateRangeFilter.allCases) { f in
+                        Text(f.label).tag(f)
+                    }
+                }
+            } label: {
+                Pill(dateFilter.label)
+            }
         }
     }
 
-    private var resultList: some View {
-        List(filteredItems) { item in
-            VStack(alignment: .leading, spacing: BarkTheme.Spacing.xs) {
-                if let title = item.title, !title.isEmpty {
-                    HighlightedText(title, highlight: queryText, lineLimit: 1)
-                        .font(.headline)
-                }
-                HighlightedText(item.body, highlight: queryText, lineLimit: 2)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                metadataRow(for: item)
-            }
-            .padding(.vertical, BarkTheme.Spacing.xs)
-        }
-        .listStyle(.plain)
+    private var emptyState: some View {
+        Text("Search agent cards, step history, and memos.")
+            .font(.subheadline)
+            .foregroundStyle(BarkTheme.Palette.ink.opacity(0.58))
+            .mockCardPadding()
     }
 
-    private func metadataRow(for item: Item) -> some View {
-        HStack(spacing: BarkTheme.Spacing.xs) {
-            Image(systemName: item.type == .push ? "bell.badge" : "note.text")
-                .font(.caption2)
-                .foregroundStyle(.tint)
-            ForEach(Array(item.tags.prefix(3)), id: \.self) { tag in
-                TagChip(tag)
-            }
-            if let group = item.group, !group.isEmpty {
-                TagChip(group, style: .group)
-            }
-            Spacer()
-            Text(item.createdAt, style: .date)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
+    private var noResults: some View {
+        Text("Nothing matched the current filters.")
+            .font(.subheadline)
+            .foregroundStyle(BarkTheme.Palette.ink.opacity(0.58))
+            .mockCardPadding()
     }
 
-    // MARK: - Helpers
+    private var hasActiveFilters: Bool {
+        statusFilter != .all || agentFilter != nil || dateFilter != .all
+    }
 
-    private var query: SearchQuery {
-        SearchQuery(
-            text: queryText,
-            types: selectedTypes,
-            tags: selectedTags,
-            groups: selectedGroups
+    private func loadFacets() {
+        facets = (try? SearchEngine.availableFacets(in: modelContext)) ?? .init(tags: [], agentIDs: [])
+    }
+
+    private func runSearch() {
+        let trimmed = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty && !hasActiveFilters {
+            results = []
+            return
+        }
+        let query = SearchQuery(
+            text: trimmed,
+            scope: selectedScope.scope,
+            agentIDs: agentFilter.map { Set([$0]) } ?? [],
+            statuses: Set(statusFilter.statuses),
+            dateRange: dateFilter.range
         )
-    }
-
-    private var filteredItems: [Item] {
-        SearchEngine.filter(items, query: query)
-    }
-
-    private var facets: SearchEngine.Facets {
-        SearchEngine.availableFacets(items)
-    }
-
-    private var hasFilters: Bool {
-        !selectedTypes.isEmpty || !selectedTags.isEmpty || !selectedGroups.isEmpty
-    }
-
-    private func toggleType(_ type: ItemType) {
-        if selectedTypes.contains(type) { selectedTypes.remove(type) } else { selectedTypes.insert(type) }
-    }
-
-    private func toggleTag(_ tag: String) {
-        if selectedTags.contains(tag) { selectedTags.remove(tag) } else { selectedTags.insert(tag) }
-    }
-
-    private func toggleGroup(_ group: String) {
-        if selectedGroups.contains(group) { selectedGroups.remove(group) } else { selectedGroups.insert(group) }
-    }
-
-    private func chipLabel(_ title: String, count: Int) -> some View {
-        Text(count > 0 ? "\(title) (\(count))" : title)
-            .font(.caption)
-            .padding(.horizontal, BarkTheme.Spacing.md)
-            .padding(.vertical, BarkTheme.Spacing.xs)
-            .background(
-                count > 0 ? BarkTheme.Palette.groupPill : BarkTheme.Palette.chipBackground,
-                in: Capsule()
-            )
-            .foregroundStyle(count > 0 ? Color.accentColor : Color.primary)
-    }
-
-    private func typeLabel(_ type: ItemType) -> String {
-        switch type {
-        case .push: return "Push"
-        case .memo: return "Memo"
+        do {
+            results = try SearchEngine.search(query, in: modelContext)
+        } catch {
+            results = []
         }
     }
 }
+
+private struct SearchResultRow: View {
+    let result: SearchResult
+    let query: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                Pill(kindLabel)
+                HighlightedText(title, highlight: query, lineLimit: 1)
+                    .font(.headline.weight(.heavy))
+                HighlightedText(bodyText, highlight: query, lineLimit: 3)
+                    .font(.subheadline)
+                    .foregroundStyle(BarkTheme.Palette.ink.opacity(0.60))
+            }
+            Spacer()
+            if let status {
+                StatusBadge(status: status, compact: true)
+            }
+        }
+        .mockCardPadding()
+    }
+
+    private var kindLabel: String {
+        switch result {
+        case .agent: return "agent"
+        case .step: return "step"
+        case .memo(let m): return m.source == .incoming ? "incoming" : "memo"
+        }
+    }
+
+    private var title: String {
+        switch result {
+        case .agent(let t): return t.displayName
+        case .step(let s): return s.title ?? s.task?.displayName ?? "Step"
+        case .memo(let m): return m.title ?? (m.source == .incoming ? "Push" : "Memo")
+        }
+    }
+
+    private var bodyText: String {
+        switch result {
+        case .agent(let t): return t.latestStepTitle ?? t.progress ?? t.statusRaw
+        case .step(let s): return s.body
+        case .memo(let m): return m.body
+        }
+    }
+
+    private var status: AgentStatus? {
+        switch result {
+        case .agent(let t): return t.status
+        case .step(let s): return s.status
+        case .memo: return nil
+        }
+    }
+}
+
+private enum ScopeChip: String, Identifiable, CaseIterable {
+    case all, agents, steps, memos
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "All"
+        case .agents: return "Agents"
+        case .steps: return "Steps"
+        case .memos: return "Memos"
+        }
+    }
+
+    var scope: SearchScope {
+        switch self {
+        case .all: return .all
+        case .agents: return .agents
+        case .steps: return .steps
+        case .memos: return .memos
+        }
+    }
+}
+
+/// 单选状态 filter:`.all` 不过滤;`.attention` 聚合 waitingInput / blocked / failed
+/// 与 Dashboard FilterStrip 一致。
+private enum AgentStatusFilter: String, Identifiable, CaseIterable {
+    case all, running, waiting, blocked, failed, done, stale, attention
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: return "all"
+        case .running: return "running"
+        case .waiting: return "waiting"
+        case .blocked: return "blocked"
+        case .failed: return "failed"
+        case .done: return "done"
+        case .stale: return "stale"
+        case .attention: return "needs attention"
+        }
+    }
+
+    var statuses: [AgentStatus] {
+        switch self {
+        case .all: return []
+        case .running: return [.running]
+        case .waiting: return [.waitingInput]
+        case .blocked: return [.blocked]
+        case .failed: return [.failed]
+        case .done: return [.done]
+        case .stale: return [.stale]
+        case .attention: return [.waitingInput, .blocked, .failed]
+        }
+    }
+}
+
+private enum DateRangeFilter: String, Identifiable, CaseIterable {
+    case all, today, last7d, last30d
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: return "any time"
+        case .today: return "today"
+        case .last7d: return "last 7d"
+        case .last30d: return "last 30d"
+        }
+    }
+
+    var range: ClosedRange<Date>? {
+        let now = Date.now
+        switch self {
+        case .all: return nil
+        case .today:
+            let start = Calendar.current.startOfDay(for: now)
+            return start...now
+        case .last7d:
+            return now.addingTimeInterval(-7 * 24 * 3600)...now
+        case .last30d:
+            return now.addingTimeInterval(-30 * 24 * 3600)...now
+        }
+    }
+}
+
