@@ -108,6 +108,7 @@ targets:
     info:
       path: NotificationServiceExtension/Info.plist
       properties:
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
         CFBundleDisplayName: BarkMate Notifications
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -142,6 +143,7 @@ targets:
     info:
       path: ShareExtension/Info.plist
       properties:
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
         CFBundleDisplayName: Save to BarkMate
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -179,6 +181,7 @@ targets:
     info:
       path: Widgets/Info.plist
       properties:
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
         CFBundleDisplayName: BarkMate Widgets
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)

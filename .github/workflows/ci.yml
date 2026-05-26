@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: iOS — Build & Test
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: BarkMate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Test SPM packages individually — fastest signal, runs on macOS host
+      # without booting a simulator.
+      - name: Test Models
+        working-directory: BarkMate/Packages/Models
+        run: swift test
+
+      - name: Test Store
+        working-directory: BarkMate/Packages/Store
+        run: swift test
+
+      - name: Test BarkService
+        working-directory: BarkMate/Packages/BarkService
+        run: swift test
+
+      # Build the full app + extensions against the iOS simulator. Catches
+      # entitlement / Info.plist / linker issues that swift test alone misses.
+      - name: Build app for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme BarkMate \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions || \
+          xcodebuild build \
+            -scheme BarkMate \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
+  server:
+    name: Server — Vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: BarkMateServer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: BarkMateServer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run vitest
+        run: npm test

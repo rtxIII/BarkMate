@@ -1,0 +1,50 @@
+name: Deploy Server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'BarkMateServer/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-server-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Wrangler deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: BarkMateServer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: BarkMateServer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run vitest
+        run: npm test
+
+      # CLOUDFLARE_API_TOKEN: Account → API Tokens → Edit Cloudflare Workers
+      # CLOUDFLARE_ACCOUNT_ID: Workers & Pages → 右侧 Account ID
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: BarkMateServer
+          command: deploy
