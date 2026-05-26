@@ -70,4 +70,23 @@ describe('buildPayload', () => {
     expect(result.collapseId).toBe('msg-42');
     expect(result.payload.id).toBe('msg-42');
   });
+
+  it('passes v0.3 agent fields through at payload root', () => {
+    const result = buildPayload({
+      body: 'running tests',
+      group: 'claude-code',
+      agent_status: 'running',
+      task_id: 'session-42',
+      progress: '3/7',
+      eta: '2026-05-19T10:30:00Z',
+    });
+
+    expect(result.payload.agent_status).toBe('running');
+    expect(result.payload.task_id).toBe('session-42');
+    expect(result.payload.progress).toBe('3/7');
+    expect(result.payload.eta).toBe('2026-05-19T10:30:00Z');
+
+    const aps = result.payload.aps as Record<string, unknown>;
+    expect(aps['thread-id']).toBe('claude-code');
+  });
 });

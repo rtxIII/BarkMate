@@ -3,11 +3,25 @@ import type { Bindings } from './types';
 import { failed, ok } from './types';
 import { registerRoute } from './routes/register';
 import { pushRoute } from './routes/push';
+import { bearerAuth } from './auth';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+app.use('*', bearerAuth);
 app.get('/healthz', (c) => c.json(ok({ status: 'ok' })));
 app.get('/ping', (c) => c.json(ok(undefined, 'pong')));
+app.get('/info', (c) =>
+  c.json(
+    ok({
+      name: 'barkmate-server',
+      version: '0.1.0',
+      apns_env: c.env.APNS_ENV,
+      apns_topic: c.env.APNS_TOPIC,
+      auth_required: Boolean(c.env.BARKMATE_AUTH_TOKEN),
+      capabilities: ['register', 'push', 'v0.3-fields', 'health'],
+    }),
+  ),
+);
 
 app.route('/', registerRoute);
 app.route('/', pushRoute);

@@ -40,7 +40,7 @@ Agent 的生命周期天然是**状态机**（running / waiting / blocked / done
 | 目标 | 衡量标准 |
 |------|----------|
 | Agent 状态一眼可见 | 主屏幕同屏可看到至少 6 个 active agent 的当前状态 |
-| 接入零摩擦 | 已有 Bark hook 的 agent 无需改代码即可显示为状态卡片（带新字段则升级体验） |
+| 接入零摩擦 | 已有 Bark hook 的 agent 无需改代码即可接收并归档为普通消息；带 `agent_status` 等新字段则升级为状态卡片 |
 | 进度压缩可读 | 多步骤 task 的 step 历史可一键总结为 ≤3 句话的进度摘要 |
 | 默认隐私 | 总结全部 on-device，除 APNs 注册和 Bark 服务器通信外无网络请求 |
 | 离手感知 | 关键状态变化（blocked / failed / waiting_input）在锁屏 / Widget / Live Activity 可见 |

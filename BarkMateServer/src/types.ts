@@ -10,6 +10,7 @@ export type Bindings = {
   APNS_TOPIC: string;
   APNS_ENV: 'sandbox' | 'production';
   APNS_PRIVATE_KEY?: string;
+  BARKMATE_AUTH_TOKEN?: string;
 };
 
 /// 与 bark-server 的 CommonResp 兼容的统一响应结构。

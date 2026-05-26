@@ -1,6 +1,6 @@
 # Phase 2 任务 2.0 — Schema 重构执行计划
 
-> 版本: 0.1 | 日期: 2026-05-08 | 状态: **Draft — 等老板 review**
+> 版本: 0.2 | 日期: 2026-05-21 | 状态: **全部完成 ✅ (2.0.1–2.0.5);Models 11/11 + BarkService 63/63 + iOS Simulator build green)**
 >
 > 配合：`product.md` v0.3.0 / `design.md` v0.3.0 / `plan.md` v0.3.0
 
@@ -219,7 +219,7 @@ public final class Memo {
 
 ---
 
-## 5. 子任务 2.0.3 — BarkService 改造（最大）
+## 5. 子任务 2.0.3 — BarkService 改造（最大） ✅ **(2026-05-20 完成)**
 
 ### 5.1 目标
 
@@ -317,12 +317,20 @@ public struct AgentTaskStore {
 
 ### 5.4 完成标准
 
-- [ ] `swift build` 编译通过到 BarkService
-- [ ] `swift test --filter BarkServiceTests` 全绿（9 个测试文件全部）
-- [ ] AgentRouter：有 agent_status 走 agent 路径；无走 memo 路径
-- [ ] AgentTaskStore.upsert：同 aggregateKey 两次推送 → 1 AgentTask + 2 AgentStep
-- [ ] Schema 三表联合搜索：query "foo" 能同时命中 AgentTask.displayName / AgentStep.title / Memo.body
-- [ ] PushParser 解析含 v0.3 字段的 payload，4 个新字段全部正确
+- [x] `swift build` 编译通过到 BarkService
+- [x] `swift test --filter BarkServiceTests` 全绿（**63/63 通过 @ 2026-05-20**）
+- [x] AgentRouter：有 agent_status 走 agent 路径；无走 memo 路径（AgentRouterTests x8）
+- [x] AgentTaskStore.upsert：同 aggregateKey 两次推送 → 1 AgentTask + 2 AgentStep（PushArchiverTests，upsert 实际写在 `PushArchiver.upsertAgentTask` 私有方法，暂未抽独立 store）
+- [x] Schema 三表联合搜索：query "foo" 能同时命中 AgentTask.displayName / AgentStep.title / Memo.body（SearchEngineTests x21）
+- [x] PushParser 解析含 v0.3 字段的 payload，4 个新字段全部正确（PushParserTests）
+
+### 5.4-bis 与原设计的偏差
+
+- **PushArchiver 没拆为 AgentArchiver + MemoArchiver 两个文件**：保留单文件 + 内部 switch 派发到 `upsertAgentTask` / `archiveMemo` 私有方法。NSE 调用方只需 `archive(_:)` 一次。
+- **AgentTaskStore 暂未抽出独立类型**：upsert 逻辑直接写在 `PushArchiver.upsertAgentTask`，等 Phase 3 主 App 出现 pin/mute/archive 等 CRUD 需求时再抽。
+- **SearchEngine 用 OptionSet `SearchScope`（沿用 design §11.1）**，而非 plan §5.3 骨架里草拟的 enum，支持 `[.agents, .memos]` 组合。
+- **SearchEngine 是内存过滤而非 SwiftData `#Predicate`**：因为 `localizedStandardContains` 在 `#Predicate` 不支持（中文 / 大小写不敏感），改为 `context.fetch` 全表后内存过滤。10k 量级足够，超 50k 走 V2 FTS5。
+- **`SearchResult` 不实现 `Sendable`**：底层是 `@Model` 引用类型，仅在所属 ModelContext 线程内有效，不跨线程；`Equatable` 基于 `id` 比较。
 
 ### 5.5 风险
 
@@ -336,7 +344,7 @@ public struct AgentTaskStore {
 
 ---
 
-## 6. 子任务 2.0.4 — DesignSystem 拆分
+## 6. 子任务 2.0.4 — DesignSystem 拆分 ✅ **(2026-05-21)**
 
 ### 6.1 目标
 
@@ -368,7 +376,9 @@ ItemCard 拆为 AgentCard + MemoCard；新增 StatusBadge / StepRow。
 
 ---
 
-## 7. 子任务 2.0.5 — App.Views 替换
+## 7. 子任务 2.0.5 — App.Views 替换 ✅ **(2026-05-21)**
+
+> 实际执行偏差:相比原计划只做 schema 字段切换,本次顺带完成了 plan.md §3.0 视觉对齐(5 tab + DesignSystem 21 组件 + Iowan typography token + paperHot 卡 + 深色 hero)。`ItemTimelineView` 已删除并拆为 `AgentDashboardView` + `HistoryView` + `AgentDetailView`,`AgentMockPrototypeView` 加文件头禁修契约注释。`LegacyItem.swift` 已删除,`PushArchiver.archive(_:type:)` 签名改为 `archive(_:fallbackMemoSource:)`。
 
 ### 7.1 目标
 

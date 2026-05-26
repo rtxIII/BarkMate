@@ -69,10 +69,33 @@ pnpm deploy
 |---|---|---|---|
 | GET | `/healthz` | ✅ S1 | 健康检查 |
 | GET | `/ping` | ✅ S1 | 服务可用性，返回 `pong` |
-| POST | `/register` | ⏳ S2 | 注册设备 |
-| GET | `/register` | ⏳ S2 | Legacy compat |
-| GET | `/register/:device_key` | ⏳ S2 | 检查 key 有效性 |
-| POST | `/push` | ⏳ S3 | V2 JSON 推送 |
-| POST | `/:device_key/...` | ⏳ S3 | V1 路径参数兼容 |
+| GET | `/info` | ✅ S4a | server capabilities + `auth_required` flag |
+| POST | `/register` | ✅ S2 | 注册设备 |
+| GET | `/register` | ✅ S2 | Legacy compat |
+| GET | `/register/:device_key` | ✅ S2 | 检查 key 有效性 |
+| POST | `/push` | ✅ S3 | V2 JSON 推送(含 v0.3 字段透传) |
+| POST | `/:device_key/...` | ✅ S3 | V1 路径参数兼容 |
 
 详见 [doc/plan.md](../doc/plan.md) 服务器端实施计划部分。
+
+## CI / 部署
+
+- **CI**: `.github/workflows/ci.yml` push/PR 自动跑 `npm run typecheck` + `npm test`
+- **Deploy**: `.github/workflows/deploy.yml` push 到 `main` 且包含 `BarkMateServer/**` 改动时自动 `wrangler deploy`;也支持手动 workflow_dispatch
+
+### 需要在 GitHub Repo Secrets 配置
+
+| Secret | 来源 | 说明 |
+|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → 创建 "Edit Cloudflare Workers" template | Wrangler 部署用 |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare → Workers & Pages → 右侧栏 Account ID | Wrangler 部署目标账号 |
+
+注:`APNS_PRIVATE_KEY` 不通过 GitHub Secrets,而是直接 `wrangler secret put APNS_PRIVATE_KEY` 注入到 Worker(只需做一次,后续 deploy 不影响)。
+
+### 可选:`BARKMATE_AUTH_TOKEN`
+
+设置后所有非 `/healthz|/ping|/info` 路径需要 `Authorization: Bearer <token>`,客户端在 BarkClient 调用前注入。未设置时与原 bark 协议完全兼容。
+
+```bash
+pnpm wrangler secret put BARKMATE_AUTH_TOKEN
+```
