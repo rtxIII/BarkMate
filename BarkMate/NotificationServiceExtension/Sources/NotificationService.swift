@@ -2,13 +2,12 @@
 //  NotificationService.swift
 //  NotificationServiceExtension
 //
-//  Phase 2 管线：
-//    1. DecryptProcessor → 处理 ciphertext（无配置/失败走降级）
-//    2. 同步明文到 bestAttemptContent（让系统 banner 可读）
-//    3. ImageEnricher → 下载 image URL 作为 UNNotificationAttachment
-//    4. PushParser + PushArchiver → 入库；失败走 PendingQueue 旁路
-//    5. DarwinNotification.post 通知主 App 刷新 / 消费 pending
-//    6. 透传系统通知（任何失败都不阻断）
+//  Phase 2 管线(薄壳):
+//    1. 通过 PushPipeline 跑 decrypt → parse → archive(失败降级 PendingQueue)
+//    2. 把解密后的 alert 同步回 bestAttemptContent(让系统 banner 可读)
+//    3. ImageEnricher 下载 image URL 作为 attachment
+//    4. DarwinNotification.post 通知主 App 刷新
+//    5. 任何阶段失败都不阻断 contentHandler
 //
 
 import UserNotifications
@@ -53,40 +52,20 @@ final class NotificationService: UNNotificationServiceExtension {
         }
 
         let cryptoBundle = container.flatMap { resolveCryptoBundle(container: $0) }
-        let decryptResult = DecryptProcessor.decryptIfNeeded(
+        let outcome = PushPipeline.process(
             userInfo: content.userInfo,
-            bundle: cryptoBundle
+            bundle: cryptoBundle,
+            container: container
         )
-        applyDecrypted(content: content, from: decryptResult)
 
-        await ImageEnricher().attachImageIfNeeded(userInfo: decryptResult.userInfo, to: content)
+        applyDecrypted(content: content, from: outcome.decryptResult)
+        await ImageEnricher().attachImageIfNeeded(userInfo: outcome.decryptResult.userInfo, to: content)
 
-        let parsed = PushParser.parse(userInfo: decryptResult.userInfo)
-        persist(parsed: parsed, degradation: decryptResult, container: container)
-    }
-
-    /// 优先写 SwiftData；失败 / 无 container 则落 PendingQueue。
-    private func persist(
-        parsed: ParsedPush,
-        degradation: DecryptProcessor.DecryptResult,
-        container: ModelContainer?
-    ) {
-        if let container {
-            do {
-                let archiver = PushArchiver(modelContainer: container)
-                try archiver.archive(parsed, degradation: degradation)
-                DarwinNotification.post(.itemDidArrive)
-                return
-            } catch {
-                NSLog("[BarkMate] archive failed, falling back to PendingQueue: \(error.localizedDescription)")
-            }
-        }
-
-        do {
-            try PendingQueue().enqueue(parsed)
+        switch outcome {
+        case .archived, .pending:
             DarwinNotification.post(.itemDidArrive)
-        } catch {
-            NSLog("[BarkMate] PendingQueue enqueue failed: \(error.localizedDescription)")
+        case .dropped(_, _, let error):
+            NSLog("[BarkMate] push dropped (archive + pending both failed): \(error.localizedDescription)")
         }
     }
 
@@ -102,7 +81,7 @@ final class NotificationService: UNNotificationServiceExtension {
         return try? store.currentBundle()
     }
 
-    /// 把解密后的 alert 字段同步回通知内容，让系统也能展示明文 banner。
+    /// 把解密后的 alert 字段同步回通知内容,让系统也能展示明文 banner。
     private func applyDecrypted(
         content: UNMutableNotificationContent,
         from result: DecryptProcessor.DecryptResult

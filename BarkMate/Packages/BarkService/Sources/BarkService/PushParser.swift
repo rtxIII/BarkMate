@@ -19,7 +19,12 @@ public struct ParsedPush: Sendable, Equatable, Codable {
     public let group: String?
     public let url: String?
     public let imageURL: String?
+    public let iconURL: String?
     public let ciphertext: String?
+    public let agentStatus: AgentStatus?
+    public let taskID: String?
+    public let progress: String?
+    public let eta: Date?
     public let sourceServerID: UUID?
     public let createdAt: Date
 
@@ -33,7 +38,12 @@ public struct ParsedPush: Sendable, Equatable, Codable {
         group: String? = nil,
         url: String? = nil,
         imageURL: String? = nil,
+        iconURL: String? = nil,
         ciphertext: String? = nil,
+        agentStatus: AgentStatus? = nil,
+        taskID: String? = nil,
+        progress: String? = nil,
+        eta: Date? = nil,
         sourceServerID: UUID? = nil,
         createdAt: Date = .now
     ) {
@@ -46,9 +56,19 @@ public struct ParsedPush: Sendable, Equatable, Codable {
         self.group = group
         self.url = url
         self.imageURL = imageURL
+        self.iconURL = iconURL
         self.ciphertext = ciphertext
+        self.agentStatus = agentStatus
+        self.taskID = taskID
+        self.progress = progress
+        self.eta = eta
         self.sourceServerID = sourceServerID
         self.createdAt = createdAt
+    }
+
+    public var agentID: String {
+        let trimmed = (group ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "default" : trimmed
     }
 }
 
@@ -79,12 +99,39 @@ public enum PushParser {
             bodyType = .plainText
         }
 
-        let id = pickString(lowered, "id") ?? UUID().uuidString
         let group = pickString(lowered, "group")
         let url = pickString(lowered, "url")
         let imageURL = pickString(lowered, "image")
-        let ciphertext = pickString(lowered, "ciphertext")
+        let iconURL = pickString(lowered, "icon")
+        let agentStatus = pickString(lowered, "agent_status").flatMap(AgentStatus.init(rawValue:))
+        let taskID = pickString(lowered, "task_id")
+        let progress = pickString(lowered, "progress")
+        let eta = pickString(lowered, "eta").flatMap(parseISODate)
         let tags = extractTags(from: bodyText)
+        let ciphertextString = pickString(lowered, "ciphertext")
+
+        // id 缺失时基于 payload 内容稳定哈希,保证 NSE 重传同一推送幂等(C2 修复)。
+        // 不能用 createdAt(每次 parser 调用是 now);用 payload 不可变字段。
+        let id: String
+        if let explicitID = pickString(lowered, "id") {
+            id = explicitID
+        } else {
+            let stable = [
+                title ?? "",
+                subtitle ?? "",
+                bodyText,
+                bodyType.rawValue,
+                group ?? "",
+                url ?? "",
+                imageURL ?? "",
+                iconURL ?? "",
+                ciphertextString ?? "",
+                agentStatus?.rawValue ?? "",
+                taskID ?? "",
+                progress ?? ""
+            ].joined(separator: "\u{1F}")
+            id = deterministicUUID(from: stable).uuidString
+        }
 
         return ParsedPush(
             id: id,
@@ -96,7 +143,12 @@ public enum PushParser {
             group: group,
             url: url,
             imageURL: imageURL,
-            ciphertext: ciphertext,
+            iconURL: iconURL,
+            ciphertext: ciphertextString,
+            agentStatus: agentStatus,
+            taskID: taskID,
+            progress: progress,
+            eta: eta,
             sourceServerID: sourceServerID,
             createdAt: now
         )
@@ -153,4 +205,8 @@ private func pickString(_ dict: [AnyHashable: Any], _ key: String) -> String? {
         return stringValue
     }
     return nil
+}
+
+private func parseISODate(_ value: String) -> Date? {
+    ISO8601DateFormatter().date(from: value)
 }

@@ -5,6 +5,7 @@ import Models
 final class PushParserTests: XCTestCase {
 
     func testParsesStandardAlertPush() {
+        let eta = "2026-05-19T10:30:00Z"
         let userInfo: [AnyHashable: Any] = [
             "aps": [
                 "alert": [
@@ -16,7 +17,12 @@ final class PushParserTests: XCTestCase {
             "id": "msg-1",
             "url": "https://example.com",
             "image": "https://img.example.com/a.png",
-            "group": "work"
+            "icon": "https://img.example.com/icon.png",
+            "group": "work",
+            "agent_status": "running",
+            "task_id": "task-1",
+            "progress": "3/7",
+            "eta": eta
         ]
 
         let parsed = PushParser.parse(userInfo: userInfo)
@@ -29,6 +35,12 @@ final class PushParserTests: XCTestCase {
         XCTAssertEqual(parsed.group, "work")
         XCTAssertEqual(parsed.url, "https://example.com")
         XCTAssertEqual(parsed.imageURL, "https://img.example.com/a.png")
+        XCTAssertEqual(parsed.iconURL, "https://img.example.com/icon.png")
+        XCTAssertEqual(parsed.agentStatus, .running)
+        XCTAssertEqual(parsed.taskID, "task-1")
+        XCTAssertEqual(parsed.progress, "3/7")
+        XCTAssertNotNil(parsed.eta)
+        XCTAssertEqual(parsed.agentID, "work")
     }
 
     func testMarkdownOverridesBody() {
@@ -46,18 +58,45 @@ final class PushParserTests: XCTestCase {
             "APS": [
                 "ALERT": ["TITLE": "Hi", "BODY": "world"]
             ],
-            "GROUP": "uppercase-group"
+            "GROUP": "uppercase-group",
+            "AGENT_STATUS": "waiting_input"
         ]
         let parsed = PushParser.parse(userInfo: userInfo)
         XCTAssertEqual(parsed.title, "Hi")
         XCTAssertEqual(parsed.body, "world")
         XCTAssertEqual(parsed.group, "uppercase-group")
+        XCTAssertEqual(parsed.agentStatus, .waitingInput)
     }
 
-    func testGeneratesIdWhenMissing() {
-        let parsed = PushParser.parse(userInfo: ["aps": ["alert": ["body": "x"]]])
-        XCTAssertFalse(parsed.id.isEmpty)
-        XCTAssertNotEqual(parsed.id, "msg-1")
+    func testAgentIDDefaultsWhenGroupMissing() {
+        let parsed = PushParser.parse(userInfo: [
+            "aps": ["alert": ["body": "x"]],
+            "agent_status": "running"
+        ])
+        XCTAssertEqual(parsed.agentID, "default")
+    }
+
+    func testGeneratesStableIdWhenMissing() {
+        // C2: id 缺失时,parser 用 payload 内容稳定哈希 → 同 payload 两次解析 id 相同。
+        let userInfo: [AnyHashable: Any] = ["aps": ["alert": ["body": "x"]]]
+        let a = PushParser.parse(userInfo: userInfo)
+        let b = PushParser.parse(userInfo: userInfo)
+        XCTAssertFalse(a.id.isEmpty)
+        XCTAssertEqual(a.id, b.id, "same payload should yield identical fallback id")
+    }
+
+    func testDifferentPayloadsGetDifferentFallbackIds() {
+        let a = PushParser.parse(userInfo: ["aps": ["alert": ["body": "x"]]])
+        let b = PushParser.parse(userInfo: ["aps": ["alert": ["body": "y"]]])
+        XCTAssertNotEqual(a.id, b.id)
+    }
+
+    func testExplicitIdOverridesFallback() {
+        let parsed = PushParser.parse(userInfo: [
+            "aps": ["alert": ["body": "x"]],
+            "id": "explicit-msg-1"
+        ])
+        XCTAssertEqual(parsed.id, "explicit-msg-1")
     }
 
     func testCiphertextPreservedForDecryptProcessor() {

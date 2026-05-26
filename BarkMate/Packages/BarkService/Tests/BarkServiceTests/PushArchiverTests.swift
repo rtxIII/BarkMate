@@ -28,50 +28,114 @@ final class PushArchiverTests: XCTestCase {
     }
 
     @MainActor
-    func testArchiveInsertsItem() throws {
+    func testArchiveAgentPushUpsertsTaskAndInsertsStep() throws {
         let parsed = ParsedPush(
             id: UUID().uuidString,
             title: "t",
             body: "hello",
             tags: ["work"],
-            group: "g"
+            group: "g",
+            agentStatus: .running,
+            taskID: "task-1",
+            progress: "1/3"
         )
         try archiver.archive(parsed)
 
-        let items = try container.mainContext.fetch(FetchDescriptor<Item>())
-        XCTAssertEqual(items.count, 1)
-        XCTAssertEqual(items.first?.body, "hello")
-        XCTAssertEqual(items.first?.type, .push)
-        XCTAssertEqual(items.first?.tags, ["work"])
+        let tasks = try container.mainContext.fetch(FetchDescriptor<AgentTask>())
+        XCTAssertEqual(tasks.count, 1)
+        XCTAssertEqual(tasks.first?.aggregateKey, "g::task-1")
+        XCTAssertEqual(tasks.first?.status, .running)
+        XCTAssertEqual(tasks.first?.progress, "1/3")
+
+        let steps = try container.mainContext.fetch(FetchDescriptor<AgentStep>())
+        XCTAssertEqual(steps.count, 1)
+        XCTAssertEqual(steps.first?.body, "hello")
+        XCTAssertEqual(steps.first?.progress, "1/3")
+        XCTAssertEqual(tasks.first?.steps.count, 1)
     }
 
     @MainActor
-    func testArchiveIsIdempotentBySameID() throws {
-        let pushId = UUID().uuidString
-        let parsed = ParsedPush(id: pushId, body: "v1")
+    func testAgentPushAggregatesByAgentAndTaskID() throws {
+        let parsed = ParsedPush(
+            id: "step-1",
+            title: "started",
+            body: "v1",
+            group: "ci",
+            agentStatus: .running,
+            taskID: "build",
+            progress: "1/2"
+        )
         try archiver.archive(parsed)
 
-        let updated = ParsedPush(id: pushId, body: "v2", tags: ["updated"])
+        let updated = ParsedPush(
+            id: "step-2",
+            title: "finished",
+            body: "v2",
+            group: "ci",
+            agentStatus: .done,
+            taskID: "build",
+            progress: "2/2"
+        )
         try archiver.archive(updated)
 
-        let items = try container.mainContext.fetch(FetchDescriptor<Item>())
-        XCTAssertEqual(items.count, 1)
-        XCTAssertEqual(items.first?.body, "v2")
-        XCTAssertEqual(items.first?.tags, ["updated"])
+        let tasks = try container.mainContext.fetch(FetchDescriptor<AgentTask>())
+        XCTAssertEqual(tasks.count, 1)
+        XCTAssertEqual(tasks.first?.status, .done)
+        XCTAssertEqual(tasks.first?.latestStepTitle, "finished")
+        XCTAssertEqual(tasks.first?.progress, "2/2")
+
+        let steps = try container.mainContext.fetch(FetchDescriptor<AgentStep>())
+        XCTAssertEqual(steps.count, 2)
+        XCTAssertEqual(tasks.first?.steps.count, 2)
     }
 
     @MainActor
-    func testArchiveHandlesNonUUIDPushID() throws {
+    func testOldProtocolPushArchivesIncomingMemoByID() throws {
         let parsed = ParsedPush(id: "arbitrary-string", body: "x")
         try archiver.archive(parsed)
 
-        let items = try container.mainContext.fetch(FetchDescriptor<Item>())
-        XCTAssertEqual(items.count, 1)
+        let memos = try container.mainContext.fetch(FetchDescriptor<Memo>())
+        XCTAssertEqual(memos.count, 1)
+        XCTAssertEqual(memos.first?.source, .incoming)
+        XCTAssertEqual(memos.first?.body, "x")
 
         // Idempotent on second call
         try archiver.archive(ParsedPush(id: "arbitrary-string", body: "y"))
-        let items2 = try container.mainContext.fetch(FetchDescriptor<Item>())
-        XCTAssertEqual(items2.count, 1)
-        XCTAssertEqual(items2.first?.body, "y")
+        let memos2 = try container.mainContext.fetch(FetchDescriptor<Memo>())
+        XCTAssertEqual(memos2.count, 1)
+        XCTAssertEqual(memos2.first?.body, "y")
+    }
+
+    @MainActor
+    func testAgentPushRetransmitIsIdempotent() throws {
+        // C1: 同 parsed.id 两次 archive (APNs 重传场景) → 1 task + 1 step。
+        let parsed = ParsedPush(
+            id: "stable-push-1",
+            title: "running",
+            body: "step body",
+            group: "ci",
+            agentStatus: .running,
+            taskID: "build",
+            progress: "1/3"
+        )
+        try archiver.archive(parsed)
+        try archiver.archive(parsed)
+
+        let tasks = try container.mainContext.fetch(FetchDescriptor<AgentTask>())
+        XCTAssertEqual(tasks.count, 1)
+        let steps = try container.mainContext.fetch(FetchDescriptor<AgentStep>())
+        XCTAssertEqual(steps.count, 1, "retransmitted push should not duplicate step")
+        XCTAssertEqual(tasks.first?.steps.count, 1)
+    }
+
+    @MainActor
+    func testManualMemoArchiveUsesManualSource() throws {
+        let parsed = ParsedPush(id: UUID().uuidString, title: "note", body: "manual")
+        try archiver.archive(parsed, fallbackMemoSource: .manual)
+
+        let memos = try container.mainContext.fetch(FetchDescriptor<Memo>())
+        XCTAssertEqual(memos.count, 1)
+        XCTAssertEqual(memos.first?.source, .manual)
+        XCTAssertEqual(memos.first?.title, "note")
     }
 }

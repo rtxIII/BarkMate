@@ -3,7 +3,7 @@
 //  ShareExtension
 //
 //  Phase 5-Core: SwiftUI hosted share extension.
-//  从其它 App 接收 NSExtensionItem (text / url) → 创建 memo 类型 Item → 入库
+//  从其它 App 接收 NSExtensionItem (text / url) → 创建 manual Memo → 入库
 //  → 发 Darwin 通知主 App 刷新。失败走 PendingQueue 旁路。
 //
 
@@ -119,7 +119,7 @@ final class ShareViewController: UIViewController {
         do {
             let container = try SharedModelContainer.make()
             let archiver = PushArchiver(modelContainer: container)
-            try archiver.archive(parsed, type: .memo)
+            try archiver.archive(parsed, fallbackMemoSource: .manual)
         } catch {
             try? PendingQueue().enqueue(parsed)
         }

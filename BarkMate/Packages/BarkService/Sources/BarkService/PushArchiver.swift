@@ -2,11 +2,12 @@
 //  PushArchiver.swift
 //  BarkService
 //
-//  ParsedPush → SwiftData Item 入库。
+//  ParsedPush → SwiftData AgentTask/AgentStep/Memo 入库。
 //  身处 Extension 24MB 内存约束下：
 //    - 使用临时 ModelContext（不复用 mainContext）
 //    - 短事务、立即 save
-//    - 按 parsed.id 去重，避免 APNs 重推造成双写
+//    - Agent 路径按 aggregateKey upsert task，每次推送新增 step
+//    - Message 路径按 parsed.id 幂等写 incoming Memo
 //
 
 import Foundation
@@ -21,35 +22,116 @@ public struct PushArchiver {
         self.modelContainer = modelContainer
     }
 
-    /// 将 ParsedPush 落库为 Item。如同 id 已存在则更新字段（幂等）。
-    /// 返回落库后的 Item.id（UUID）。
+    /// 将 ParsedPush 落库为 AgentTask/AgentStep 或 Memo。
+    /// 返回 AgentTask.id 或 Memo.id（UUID）。
     ///
     /// - Parameters:
     ///   - parsed: 解析后的 push/share 内容
-    ///   - type: Item.type；推送默认 `.push`，Share Extension 传 `.memo`
-    ///   - degradation: 解密失败时传入，密文/IV 会序列化到 `Item.metadata`
+    ///   - type: 兼容旧 API；推送默认 `.push`，Share Extension 传 `.memo`
+    ///   - degradation: 解密失败时传入，密文/IV 会序列化到 `Memo.metadata`
     ///     便于后续手动解密恢复（2.12 降级策略）。
     @discardableResult
     public func archive(
         _ parsed: ParsedPush,
-        type: ItemType = .push,
+        fallbackMemoSource: MemoSource = .incoming,
         degradation: DecryptProcessor.DecryptResult? = nil
     ) throws -> UUID {
         let context = ModelContext(modelContainer)
         context.autosaveEnabled = false
 
-        // 去重：按 parsed.id（推送侧的业务 id，字符串）查找既存。
-        // 映射到 Item.id(UUID)：优先把 parsed.id 解析为 UUID，失败则按 body+sourceServerID 查重（保守策略）。
+        switch AgentRouter.route(parsed, memoSource: fallbackMemoSource) {
+        case .agent(let route):
+            return try upsertAgentTask(parsed, route: route, context: context)
+        case .memo(let source):
+            return try archiveMemo(
+                parsed,
+                source: source,
+                degradation: degradation,
+                context: context
+            )
+        }
+    }
+
+    private func upsertAgentTask(
+        _ parsed: ParsedPush,
+        route: AgentRouteContext,
+        context: ModelContext
+    ) throws -> UUID {
+        let aggregateKey = route.aggregateKey
+        let predicate = #Predicate<AgentTask> { $0.aggregateKey == aggregateKey }
+        let existing = try context.fetch(FetchDescriptor<AgentTask>(predicate: predicate)).first
+
+        let task: AgentTask
+        if let existing {
+            task = existing
+            existing.displayName = route.agentID
+            existing.iconURL = parsed.iconURL ?? existing.iconURL
+            existing.status = route.status
+            existing.latestStepTitle = parsed.title ?? existing.latestStepTitle
+            existing.progress = parsed.progress ?? existing.progress
+            existing.eta = parsed.eta ?? existing.eta
+            existing.sourceServerID = parsed.sourceServerID ?? existing.sourceServerID
+            existing.updatedAt = parsed.createdAt
+        } else {
+            task = AgentTask(
+                aggregateKey: route.aggregateKey,
+                agentID: route.agentID,
+                taskID: route.taskID,
+                displayName: route.agentID,
+                iconURL: parsed.iconURL,
+                status: route.status,
+                latestStepTitle: parsed.title,
+                progress: parsed.progress,
+                eta: parsed.eta,
+                sourceServerID: parsed.sourceServerID,
+                createdAt: parsed.createdAt,
+                updatedAt: parsed.createdAt
+            )
+            context.insert(task)
+        }
+
+        // Step 用 deterministicUUID(from: parsed.id) 保证 APNs 重传同一 push 时
+        // step 不重复插入(C1 修复)。fetch 检查 step.id 已存在则只更新 task 不插 step。
+        let stepID = deterministicUUID(from: parsed.id)
+        let stepPredicate = #Predicate<AgentStep> { $0.id == stepID }
+        let stepExists = try context.fetch(FetchDescriptor<AgentStep>(predicate: stepPredicate)).first != nil
+
+        if !stepExists {
+            let step = AgentStep(
+                id: stepID,
+                status: route.status,
+                title: parsed.title,
+                body: parsed.body,
+                bodyType: parsed.bodyType,
+                progress: parsed.progress,
+                url: parsed.url,
+                imageURL: parsed.imageURL,
+                rawPayload: encodeRawPayload(parsed),
+                createdAt: parsed.createdAt
+            )
+            context.insert(step)
+            task.steps.append(step)
+        }
+
+        try context.save()
+        return task.id
+    }
+
+    private func archiveMemo(
+        _ parsed: ParsedPush,
+        source: MemoSource,
+        degradation: DecryptProcessor.DecryptResult?,
+        context: ModelContext
+    ) throws -> UUID {
         let uuid = UUID(uuidString: parsed.id) ?? deterministicUUID(from: parsed.id)
-        let predicate = #Predicate<Item> { $0.id == uuid }
-        let existing = try context.fetch(FetchDescriptor<Item>(predicate: predicate)).first
+        let predicate = #Predicate<Memo> { $0.id == uuid }
+        let existing = try context.fetch(FetchDescriptor<Memo>(predicate: predicate)).first
 
         let metadata = encodeDegradationMetadata(degradation)
 
         if let existing {
-            existing.type = type
+            existing.source = source
             existing.title = parsed.title
-            existing.subtitle = parsed.subtitle
             existing.body = parsed.body
             existing.bodyType = parsed.bodyType
             existing.tags = parsed.tags
@@ -63,25 +145,24 @@ public struct PushArchiver {
             return existing.id
         }
 
-        let item = Item(
+        let memo = Memo(
             id: uuid,
-            type: type,
+            source: source,
             title: parsed.title,
-            subtitle: parsed.subtitle,
             body: parsed.body,
             bodyType: parsed.bodyType,
             tags: parsed.tags,
             group: parsed.group,
+            sourceServerID: parsed.sourceServerID,
             url: parsed.url,
             imageURL: parsed.imageURL,
             metadata: metadata,
-            sourceServerID: parsed.sourceServerID,
             createdAt: parsed.createdAt,
             updatedAt: parsed.createdAt
         )
-        context.insert(item)
+        context.insert(memo)
         try context.save()
-        return item.id
+        return memo.id
     }
 
     private func encodeDegradationMetadata(
@@ -97,21 +178,8 @@ public struct PushArchiver {
         if let iv = result.originalIV { payload["iv"] = iv }
         return try? JSONSerialization.data(withJSONObject: payload)
     }
-}
 
-/// 将任意字符串映射到稳定的 UUID（基于 SHA256 前 16 字节），用于非 UUID 形式的 push id 去重。
-private func deterministicUUID(from input: String) -> UUID {
-    let bytes = Array(input.utf8)
-    var hash = [UInt8](repeating: 0, count: 16)
-    for (index, byte) in bytes.enumerated() {
-        hash[index % 16] = hash[index % 16] &+ byte
+    private func encodeRawPayload(_ parsed: ParsedPush) -> Data? {
+        try? JSONEncoder().encode(parsed)
     }
-    hash[6] = (hash[6] & 0x0F) | 0x40 // version 4
-    hash[8] = (hash[8] & 0x3F) | 0x80 // variant
-    return UUID(uuid: (
-        hash[0], hash[1], hash[2], hash[3],
-        hash[4], hash[5], hash[6], hash[7],
-        hash[8], hash[9], hash[10], hash[11],
-        hash[12], hash[13], hash[14], hash[15]
-    ))
 }
