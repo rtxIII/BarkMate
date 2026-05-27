@@ -4,7 +4,7 @@ import { failed } from './types';
 
 type AppEnv = { Bindings: Bindings };
 
-const PUBLIC_PATHS = new Set(['/healthz', '/ping', '/info']);
+const PUBLIC_PATHS = new Set(['/healthz', '/ping', '/info', '/privacy', '/privacy.txt']);
 
 export const bearerAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   const token = c.env.BARKMATE_AUTH_TOKEN;
