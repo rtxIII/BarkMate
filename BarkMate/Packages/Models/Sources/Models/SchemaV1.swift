@@ -40,4 +40,6 @@ public enum BarkMateMigrationPlan: SchemaMigrationPlan {
 }
 
 /// 便捷引用：当前 schema 版本。
-public let currentSchema: Schema = Schema(versionedSchema: BarkMateSchemaV1.self)
+/// 写成 computed property 兼容 Swift 6 strict concurrency 在 SwiftData.Schema 不
+/// 为 Sendable 的旧 SDK（Xcode 16）下的全局存储检查。
+public var currentSchema: Schema { Schema(versionedSchema: BarkMateSchemaV1.self) }
