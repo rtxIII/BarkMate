@@ -50,18 +50,20 @@ jobs:
 
       # Build the full app + extensions against the iOS simulator. Catches
       # entitlement / Info.plist / linker issues that swift test alone misses.
+      # generic/platform 避免依赖具体 simulator 设备型号(本地用 iPhone 17 但
+      # CI Xcode 16 SDK 没这型号)。
       - name: Build app for iOS Simulator
         run: |
           set -o pipefail
           xcodebuild build \
             -scheme BarkMate \
-            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions || \
           xcodebuild build \
             -scheme BarkMate \
-            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
