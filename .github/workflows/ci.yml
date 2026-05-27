@@ -21,7 +21,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app || sudo xcode-select -s /Applications/Xcode.app
+        # 项目用 iOS 18 deployment target + iPhone 17 simulator(iOS 26)。
+        # macos-15 runner 默认 Xcode 16.4 不带 iOS 18+ SDK,需选 Xcode 26.x。
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app \
+            || sudo xcode-select -s /Applications/Xcode_26.2.app \
+            || sudo xcode-select -s /Applications/Xcode_26.1.1.app \
+            || sudo xcode-select -s /Applications/Xcode_26.0.1.app
 
       - name: Show toolchain
         run: |
@@ -50,20 +56,18 @@ jobs:
 
       # Build the full app + extensions against the iOS simulator. Catches
       # entitlement / Info.plist / linker issues that swift test alone misses.
-      # generic/platform 避免依赖具体 simulator 设备型号(本地用 iPhone 17 但
-      # CI Xcode 16 SDK 没这型号)。
       - name: Build app for iOS Simulator
         run: |
           set -o pipefail
           xcodebuild build \
             -scheme BarkMate \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions || \
           xcodebuild build \
             -scheme BarkMate \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
