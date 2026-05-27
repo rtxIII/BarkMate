@@ -112,24 +112,25 @@ public enum PushParser {
 
         // id 缺失时基于 payload 内容稳定哈希,保证 NSE 重传同一推送幂等(C2 修复)。
         // 不能用 createdAt(每次 parser 调用是 now);用 payload 不可变字段。
+        // 注:Swift 6.0 推断器对 12 元数组字面量超时,拆成 var 累加。
         let id: String
         if let explicitID = pickString(lowered, "id") {
             id = explicitID
         } else {
-            let stable = [
-                title ?? "",
-                subtitle ?? "",
-                bodyText,
-                bodyType.rawValue,
-                group ?? "",
-                url ?? "",
-                imageURL ?? "",
-                iconURL ?? "",
-                ciphertextString ?? "",
-                agentStatus?.rawValue ?? "",
-                taskID ?? "",
-                progress ?? ""
-            ].joined(separator: "\u{1F}")
+            var stableFields: [String] = []
+            stableFields.append(title ?? "")
+            stableFields.append(subtitle ?? "")
+            stableFields.append(bodyText)
+            stableFields.append(bodyType.rawValue)
+            stableFields.append(group ?? "")
+            stableFields.append(url ?? "")
+            stableFields.append(imageURL ?? "")
+            stableFields.append(iconURL ?? "")
+            stableFields.append(ciphertextString ?? "")
+            stableFields.append(agentStatus?.rawValue ?? "")
+            stableFields.append(taskID ?? "")
+            stableFields.append(progress ?? "")
+            let stable = stableFields.joined(separator: "\u{1F}")
             id = deterministicUUID(from: stable).uuidString
         }
 
