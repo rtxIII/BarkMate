@@ -1,4 +1,4 @@
-# BarkMate — 原型 PRD
+# BarkAgent — 原型 PRD
 
 > 版本：0.1.0  
 > 日期：2026-05-15  
@@ -7,7 +7,7 @@
 
 ## 1. 原型目标
 
-BarkMate 原型用于验证一个核心判断：**AI Agent 的运行结果不应该以消息流呈现，而应该以持久状态卡片呈现。**
+BarkAgent 原型用于验证一个核心判断：**AI Agent 的运行结果不应该以消息流呈现，而应该以持久状态卡片呈现。**
 
 原型需要让评审者在 3 分钟内理解：
 
@@ -27,7 +27,7 @@ AI Agent 常以终端、后台任务、CI pipeline、workflow 的形式长时间
 - **进度不可读**：多步任务只能通过日志判断进度，成本高。
 - **消息流混乱**：传统 Bark / Telegram / Slack 推送是孤立消息，无法表达“同一个 task 的最新状态”。
 
-BarkMate 的产品机会是把 Bark 推送协议升级为一个本地优先的 **Agent Dashboard**：仍然用 HTTP 推送接入，但客户端按 `agent_id + task_id` 聚合为状态卡片。
+BarkAgent 的产品机会是把 Bark 推送协议升级为一个本地优先的 **Agent Dashboard**：仍然用 HTTP 推送接入，但客户端按 `agent_id + task_id` 聚合为状态卡片。
 
 ## 3. 原型成功标准
 
@@ -141,7 +141,7 @@ BarkMate 的产品机会是把 Bark 推送协议升级为一个本地优先的 *
 ## 8. 信息架构
 
 ```text
-BarkMate Prototype
+BarkAgent Prototype
 ├── Onboarding / Empty State
 │   ├── 产品概念说明
 │   ├── 默认服务器说明
@@ -172,7 +172,7 @@ BarkMate Prototype
 
 ### 9.1 首次启动并接入 agent
 
-1. 用户打开 BarkMate。
+1. 用户打开 BarkAgent。
 2. 看到空 Dashboard 和一句定位：`Your pocket dashboard for long-running AI agents.`
 3. 页面展示默认服务器与设备 key 的概念。
 4. 用户点击 `Copy curl example`。
@@ -211,13 +211,13 @@ curl -X POST "https://api.day.app/<key>" \
 1. 原型模拟一条不含 `agent_status` 的普通 Bark 推送。
 2. 该消息不进入 Active Agent。
 3. Dashboard 下半屏 History Timeline 出现一条 incoming memo。
-4. 用户理解 BarkMate 兼容旧协议，但新字段会升级体验。
+4. 用户理解 BarkAgent 兼容旧协议，但新字段会升级体验。
 
 ## 10. 页面需求
 
 ### 10.1 Onboarding / Empty State
 
-目标：让新用户知道 BarkMate 不是普通 inbox，而是 agent 状态面板。
+目标：让新用户知道 BarkAgent 不是普通 inbox，而是 agent 状态面板。
 
 必须展示：
 
@@ -333,7 +333,7 @@ AgentCard 必须包含：
 
 ### 10.6 Settings Preview
 
-目标：让评审者理解 BarkMate 的隐私和接入边界。
+目标：让评审者理解 BarkAgent 的隐私和接入边界。
 
 必须展示：
 
@@ -384,7 +384,7 @@ body=main branch build completed in 12m32s
 See every long-running agent as a living card.
 
 Send Bark-compatible pushes with agent_status and task_id.
-BarkMate will update the same task card instead of stacking messages.
+BarkAgent will update the same task card instead of stacking messages.
 ```
 
 ### Dashboard Summary
@@ -433,7 +433,7 @@ Pushes are stored locally. On-device summaries never leave your iPhone.
 
 ## 15. 原型验收清单
 
-- [ ] 空状态能解释 BarkMate 的核心概念；
+- [ ] 空状态能解释 BarkAgent 的核心概念；
 - [ ] 能从空状态复制 curl 示例；
 - [ ] Dashboard 展示至少 6 个 active agent；
 - [ ] 每种状态都有可区分 badge；

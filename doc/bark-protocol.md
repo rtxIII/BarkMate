@@ -1,6 +1,6 @@
 # Bark 协议摘要
 
-> 基于 huangfeng/Bark 项目源码（`Bark/`）。供 BarkMate Phase 2 推送管线参考。
+> 基于 huangfeng/Bark 项目源码（`Bark/`）。供 BarkAgent Phase 2 推送管线参考。
 > 日期：2026-04-20 ｜ 来源文件：`Bark/Common/Moya/BarkApi.swift`、`Bark/Model/Algorithm.swift`、
 > `Bark/NotificationServiceExtension/`、`Bark/Common/Client.swift`、`Bark/Controller/ServerListViewModel.swift`
 
@@ -87,7 +87,7 @@ APNs payload `userInfo` 字典字段（**全部顶层**，非 `aps` 子结构）
 
 **降级策略**：
 - 解密失败 → `body = "Decryption Failed"`，正常下发通知（不写 Realm/SwiftData）
-- BarkMate 计划 V1 升级：解密失败时**保留原始密文**入库（Phase 2 task 2.12）
+- BarkAgent 计划 V1 升级：解密失败时**保留原始密文**入库（Phase 2 task 2.12）
 
 ---
 
@@ -101,7 +101,7 @@ APNs payload `userInfo` 字典字段（**全部顶层**，非 `aps` 子结构）
 3. level        ← active/timeSensitive/passive/critical
 4. badge
 5. autoCopy
-6. archive      ← 写入持久化（Bark：plist file drop；BarkMate：SwiftData 直写或 plist drop）
+6. archive      ← 写入持久化（Bark：plist file drop；BarkAgent：SwiftData 直写或 plist drop）
 7. mute         ← 检查 group mute
 8. call         ← 30s 循环铃声
 9. setImage     ← 下载图片附件
@@ -123,7 +123,7 @@ CFNotificationCenterPostNotification(
 )
 ```
 
-**BarkMate 命名建议**：`com.barkmate.newmessage`（避免与原 Bark 冲突）。
+**BarkAgent 命名建议**：`com.barkmate.newmessage`（避免与原 Bark 冲突）。
 
 **主应用监听**：`CFNotificationCenterAddObserver` + `DispatchSourceProcessSignal` 触发 SwiftData `@Query` 刷新。
 
@@ -138,7 +138,7 @@ CFNotificationCenterPostNotification(
 2. 写入 App Group `pending_messages/<sha256(messageId)>.plist`
 3. 主 App 启动 / 收到 Darwin notification 时扫描目录、入库、删 plist
 
-**BarkMate 决策点**：
+**BarkAgent 决策点**：
 - Phase 1 已验证 SwiftData 跨 container 共享 → **可以直接写**
 - 但 plist 旁路对 Extension 崩溃/超时更鲁棒
 - **建议**：Phase 2 起始用直写（简单），Phase 2.4 加降级时引入 plist 旁路
@@ -161,7 +161,7 @@ CFNotificationCenterPostNotification(
 
 ## 8. 关键依赖与替代
 
-| Bark 用 | BarkMate 用 | 备注 |
+| Bark 用 | BarkAgent 用 | 备注 |
 |---|---|---|
 | Realm | SwiftData | iOS 18+ |
 | RxSwift / Moya | async/await + URLSession | 零依赖 |
@@ -172,7 +172,7 @@ CFNotificationCenterPostNotification(
 
 ---
 
-## 9. BarkMate Phase 2 实现 checklist（按 plan.md 任务号）
+## 9. BarkAgent Phase 2 实现 checklist（按 plan.md 任务号）
 
 - **2.1 / 2.2 BarkClient**：实现 `register` / `ping`，async/await，URLSession
 - **2.3 Extension 入口**：仅透传现版本已就位，需补 processor 流水线

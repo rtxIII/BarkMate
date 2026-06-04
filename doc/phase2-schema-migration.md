@@ -47,7 +47,7 @@ enum MemoSource: String, Codable {
 
 ### 1.3 schema 直接覆盖
 
-`BarkMateSchemaV1` 内容整体替换为新模型列表。**不**新建 `BarkMateSchemaV2` —— 因为没有用户数据，没必要保留 V1 历史。`MigrationPlan.stages` 仍为空数组。
+`BarkAgentSchemaV1` 内容整体替换为新模型列表。**不**新建 `BarkAgentSchemaV2` —— 因为没有用户数据，没必要保留 V1 历史。`MigrationPlan.stages` 仍为空数组。
 
 ## 2. 子任务依赖图
 
@@ -169,7 +169,7 @@ public final class Memo {
 
 - [ ] `swift build` 编译通过（在 Models 包内）
 - [ ] `swift test --filter ModelsTests` 全绿
-- [ ] `BarkMateSchemaV1.models` 包含 6 个类型
+- [ ] `BarkAgentSchemaV1.models` 包含 6 个类型
 - [ ] AgentTask `aggregateKey` 唯一约束生效（测试：重复插入抛错）
 - [ ] AgentTask 删除 → cascade 删除其 AgentStep（测试覆盖）
 - [ ] Memo `source` 字段可读写（测试 manual / incoming 都能存）
@@ -400,7 +400,7 @@ ItemCard 拆为 AgentCard + MemoCard；新增 StatusBadge / StepRow。
 | `ShareExtension/Sources/ShareViewController.swift` | **改写** | `Item(type: .memo)` → `Memo(source: .manual)` |
 | `ShareExtension/Sources/ShareView.swift` | 视情况 | 如果只显示 toast，可能不动 |
 | `App/Sources/PendingQueueDrainer.swift` | **小改** | 处理新 task type |
-| `Widgets/Sources/BarkMateWidgets.swift` | 验证 | 仍是占位则不动；如果已查询 Item 则改 AgentTask |
+| `Widgets/Sources/BarkAgentWidgets.swift` | 验证 | 仍是占位则不动；如果已查询 Item 则改 AgentTask |
 | `NSE/Sources/NotificationService.swift` | **小改** | 装配 AgentRouter + AgentTaskStore + MemoArchiver |
 
 ### 7.3 完成标准

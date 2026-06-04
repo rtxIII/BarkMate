@@ -1,4 +1,4 @@
-# BarkMate Phase 2 手动测试验证方案
+# BarkAgent Phase 2 手动测试验证方案
 
 > 版本: 1.0 | 日期: 2026-05-21 | 范围: Phase 2.0 Schema 重构完成 + Phase 3.0 视觉对齐完成后的手动验证
 > 阻塞依赖: Phase 2.1–2.4 / 2.9–2.14 (⏳) — 真实 APNs/NSE/解密/Darwin 通知相关用例本轮**跳过**
@@ -36,7 +36,7 @@ cd ../BarkService && swift test
 
 | 用例 | 步骤 | 预期 |
 |---|---|---|
-| L0-1 编译 | Xcode 选中 `BarkMate` scheme，Simulator=iPhone 15 Pro，Build | 无 error/warning（已知 warning 列入 report 备注） |
+| L0-1 编译 | Xcode 选中 `BarkAgent` scheme，Simulator=iPhone 15 Pro，Build | 无 error/warning（已知 warning 列入 report 备注） |
 | L0-2 启动 | Run | App 启动 < 1.5s，落在 Agents tab（默认） |
 | L0-3 四 target | 分别 select `ShareExtension` / `NotificationServiceExtension` / `Widgets` scheme，Build | 均成功 |
 | L0-4 App Group | 主 App 写一条 Memo（History tab `+`），杀进程重启 | Memo 仍在 |

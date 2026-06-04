@@ -1,4 +1,4 @@
-# BarkMate Phase 2 手动测试执行报告
+# BarkAgent Phase 2 手动测试执行报告
 
 > 执行人: ____ | 日期: ____ | Xcode: ____ | iOS Sim: ____
 > 关联计划: `doc/phase2-manual-test-plan.md`

@@ -1,6 +1,6 @@
-# BarkMate — 实施计划
+# BarkAgent — 实施计划
 
-> 版本: 0.4.1 | 日期: 2026-05-26 | 状态: **Client Phase 1-4 ✅ · Phase 1 收尾 ✅(AppIdentifierPrefix 全 target + CI) · Server MS1+MS2a+S5(部分)✅ (CI/deploy workflow + Secrets 文档 + README) · 进入 V1.0 候选 · BarkServiceTests 74/74 + Models 11/11 + Store 12/12 + vitest 36/36**
+> 版本: 0.4.1 | 日期: 2026-05-26 | 状态: **Client Phase 1-4 ✅ · Phase 1 收尾 ✅(AppIdentifierPrefix 全 target + CI) · Server MS1+MS2a+S4b(1-3)+S5(部分)✅ (CI/deploy workflow + Secrets 文档 + README) · 进入 V1.0 候选 · BarkServiceTests 74/74 + Models 11/11 + Store 12/12 + vitest 47/47**
 
 ## 架构概览
 
@@ -8,7 +8,7 @@
 
 ```
 ┌──────────────┐          ┌──────────────────────┐        ┌──────────┐
-│  BarkMate    │ register │  BarkMateServer      │  push  │   APNs   │
+│  BarkAgent    │ register │  BarkAgentServer      │  push  │   APNs   │
 │  iOS App     ├─────────►│  (Cloudflare Worker) ├───────►│  Apple   │
 │              │◄─────────┤  + KV storage        │        │          │
 │              │  /push   │                      │        └─────┬────┘
@@ -149,7 +149,7 @@ Phase 7: 备忘录 + Share Extension + Siri
 
 | 任务 | 状态 | 内容 |
 |----|:---:|------|
-| A | ✅ | `xcodegen generate` + `xcodebuild build -scheme BarkMate -destination 'platform=iOS Simulator,name=iPhone 17'` 全 5 target BUILD SUCCEEDED |
+| A | ✅ | `xcodegen generate` + `xcodebuild build -scheme BarkAgent -destination 'platform=iOS Simulator,name=iPhone 17'` 全 5 target BUILD SUCCEEDED |
 | B | ✅ | PushPipelineIntegrationTests 5 项端到端覆盖：单条 v0.3 push 入库 / 三条聚合状态推进 / 旧协议→incoming Memo / nil container→PendingQueue→drain 重放 / 无 bundle 时密文降级 |
 | C | ✅ | PushPipelineIntegrationTests.testEncryptedV03AgentPushDecryptsAndArchivesAsAgent：AES-256/CBC + PKCS7 加密的 v0.3 payload → DecryptProcessor 解密 → PushParser 字段解析 → PushArchiver 落 AgentTask + AgentStep |
 | simulator E2E | ⏳ | `xcrun simctl push` 在 simulator 不触发 service-class（CoreSimulatorBridge 直接 SpringBoard）；真实 APNs token 上报路径留待 TestFlight / 真机；不阻塞 V1.0 候选 |
@@ -410,7 +410,7 @@ Phase 7: 备忘录 + Share Extension + Siri
 | 7.7 | Share 类型支持 | 文本 / URL / 图片 |
 | 7.8 | LPLinkMetadata | URL 元数据（可选） |
 | 7.9 | Toast 反馈 | Share 后极简确认 UI |
-| 7.10 | AppIntents | "在 BarkMate 保存一条备忘" / "查询 active agent 数量" |
+| 7.10 | AppIntents | "在 BarkAgent 保存一条备忘" / "查询 active agent 数量" |
 | 7.11 | Siri Shortcuts | App Intents 集成 |
 
 ### 完成标准
@@ -419,11 +419,11 @@ Phase 7: 备忘录 + Share Extension + Siri
 - [ ] 草稿恢复：杀进程重启能恢复未保存内容
 - [ ] Safari 分享链接 → 出现新 Memo
 - [ ] Share Extension 内存 < 24MB
-- [ ] Siri 语音 "在 BarkMate 保存一条备忘" 可触发
+- [ ] Siri 语音 "在 BarkAgent 保存一条备忘" 可触发
 
 ---
 
-# 服务器端实施计划 (BarkMateServer)
+# 服务器端实施计划 (BarkAgentServer)
 
 > 代码位置：`BarkMateServer/`。S1-S3 已完成（MS1 达成）。后续拆为 V1.0 必需的 S4a 与 V1.1 的 S4b。
 
@@ -462,11 +462,11 @@ Phase 7: 备忘录 + Share Extension + Siri
 
 **目标**：新增 Live Activity push 端点，支持 ActivityKit 远程更新。
 
-| ID | 任务 | 说明 |
-|----|------|------|
-| S4b.1 | `POST /liveactivity/:token` | 接收 LA push token + content state，发 push-type: liveactivity |
-| S4b.2 | LA JWT 处理 | 同 APNs JWT 复用 |
-| S4b.3 | LA push payload | `aps.content-state` + `aps.event` (`update` / `end`) |
+| ID | 状态 | 任务 | 说明 |
+|----|:---:|------|------|
+| S4b.1 | ✅ | `POST /liveactivity/:token` | 接收 LA push token + content state，发 push-type: liveactivity |
+| S4b.2 | ✅ | LA JWT 处理 | 同 APNs JWT 复用 |
+| S4b.3 | ✅ | LA push payload | `aps.content-state` + `aps.event` (`update` / `end`) |
 | S4b.4 | LA token 生命周期 | 接收 invalidation → 清除 |
 | S4b.5 | LA 频率控制 | server 端 debounce，避免过高频远程更新 |
 
@@ -505,8 +505,9 @@ Phase 7: 备忘录 + Share Extension + Siri
 - [ ] 内存基准：App < 80MB，Extension < 24MB
 - [ ] 性能基准：冷启动 < 1.5s（iPhone 14 基准）
 - [ ] 隐私边界：除 APNs 注册和 Bark server 通信外无额外网络请求
-- [ ] App Store 合规：权限描述（通知、相机、照片）
-- [ ] 隐私政策文档
+- [x] App Store 合规：权限描述（通知、相机、照片）
+- [x] 隐私政策文档
+- [x] TestFlight build 上传：BarkAgent / `com.barkmate.ios` / 0.1.0(4)（2026-06-04，App Store Connect processing；含简练 AppIcon 正常/暗色两套）
 - [ ] Demo 视频 + 截图
 - [ ] TestFlight 内测 > 7 天，关键 bug 清零
 
