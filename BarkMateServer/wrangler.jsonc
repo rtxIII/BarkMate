@@ -21,7 +21,7 @@
 		"APNS_TEAM_ID": "STLD27C5KT",
 		"APNS_KEY_ID": "359FJ8J5G9",
 		"APNS_TOPIC": "com.barkmate.ios",
-		"APNS_ENV": "sandbox"
+		"APNS_ENV": "production"
 	},
 	"observability": {
 		"enabled": true

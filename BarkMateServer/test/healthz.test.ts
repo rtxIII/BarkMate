@@ -45,6 +45,7 @@ describe('GET /info', () => {
     expect(body.data?.name).toBe('barkmate-server');
     expect(body.data?.capabilities).toContain('v0.3-fields');
     expect(body.data?.capabilities).toContain('health');
+    expect(body.data?.capabilities).toContain('liveactivity');
     expect(body.data?.auth_required).toBe(false);
   });
 });

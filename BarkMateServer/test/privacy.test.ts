@@ -9,8 +9,8 @@ describe('GET /privacy', () => {
     expect(response.headers.get('content-type') ?? '').toContain('text/html');
 
     const body = await response.text();
-    expect(body).toContain('BarkMate Privacy Policy');
-    expect(body).toContain('BarkMate 隐私政策');
+    expect(body).toContain('BarkAgent Privacy Policy');
+    expect(body).toContain('BarkAgent 隐私政策');
     expect(body).toContain('group.com.barkmate.shared');
     expect(body).toContain('Apple');
     expect(body).toContain('Cloudflare');
@@ -25,7 +25,7 @@ describe('GET /privacy.txt', () => {
     expect(response.headers.get('content-type') ?? '').toContain('text/plain');
 
     const body = await response.text();
-    expect(body).toContain('BarkMate Privacy Policy');
+    expect(body).toContain('BarkAgent Privacy Policy');
     expect(body).toContain('We do NOT collect');
     expect(body).toContain('DELETE /register/:device_key');
     expect(body).toContain('我们是谁');

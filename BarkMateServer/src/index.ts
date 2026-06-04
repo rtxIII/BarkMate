@@ -3,6 +3,7 @@ import type { Bindings } from './types';
 import { failed, ok } from './types';
 import { registerRoute } from './routes/register';
 import { pushRoute } from './routes/push';
+import { liveActivityRoute } from './routes/liveactivity';
 import { privacyRoute } from './routes/privacy';
 import { bearerAuth } from './auth';
 
@@ -19,13 +20,14 @@ app.get('/info', (c) =>
       apns_env: c.env.APNS_ENV,
       apns_topic: c.env.APNS_TOPIC,
       auth_required: Boolean(c.env.BARKMATE_AUTH_TOKEN),
-      capabilities: ['register', 'push', 'v0.3-fields', 'health', 'privacy-policy'],
+      capabilities: ['register', 'push', 'v0.3-fields', 'health', 'privacy-policy', 'liveactivity'],
     }),
   ),
 );
 
 app.route('/', privacyRoute);
 app.route('/', registerRoute);
+app.route('/', liveActivityRoute);
 app.route('/', pushRoute);
 
 app.onError((err, c) => {

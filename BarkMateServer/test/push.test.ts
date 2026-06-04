@@ -7,7 +7,7 @@ interface PushResponse {
   data?: unknown;
 }
 
-const APNS_SANDBOX_HOST = 'https://api.sandbox.push.apple.com';
+const APNS_PRODUCTION_HOST = 'https://api.push.apple.com';
 const TEST_DEVICE_KEY = 'test-key';
 const TEST_DEVICE_TOKEN = 'aabbccdd11223344';
 
@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe('POST /push (V2 JSON)', () => {
-  it('200 success: forwards payload to APNs sandbox host', async () => {
+  it('200 success: forwards payload to APNs production host', async () => {
     let capturedUrl = '';
     let capturedHeaders: Headers | undefined;
     let capturedBody = '';
@@ -48,7 +48,7 @@ describe('POST /push (V2 JSON)', () => {
     expect(body.code).toBe(200);
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(capturedUrl).toBe(`${APNS_SANDBOX_HOST}/3/device/${TEST_DEVICE_TOKEN}`);
+    expect(capturedUrl).toBe(`${APNS_PRODUCTION_HOST}/3/device/${TEST_DEVICE_TOKEN}`);
     expect(capturedHeaders?.get('apns-topic')).toBe('com.barkmate.ios');
     expect(capturedHeaders?.get('apns-push-type')).toBe('alert');
     expect(capturedHeaders?.get('authorization')).toMatch(/^bearer ey/);
@@ -187,4 +187,3 @@ describe('V1 path-param compat', () => {
     expect(alert.body).toBe('hello world');
   });
 });
-

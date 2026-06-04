@@ -1,6 +1,6 @@
-# BarkMateServer
+# BarkAgentServer
 
-BarkMate 推送通知服务器 — TypeScript + Cloudflare Workers + KV。
+BarkAgent 推送通知服务器 — TypeScript + Cloudflare Workers + KV。
 协议兼容原 [bark-server](https://github.com/Finb/bark-server)（`/register` / `/push` / `/ping`）。
 
 ## Stack
@@ -74,9 +74,33 @@ pnpm deploy
 | GET | `/register` | ✅ S2 | Legacy compat |
 | GET | `/register/:device_key` | ✅ S2 | 检查 key 有效性 |
 | POST | `/push` | ✅ S3 | V2 JSON 推送(含 v0.3 字段透传) |
+| POST | `/liveactivity/:token` | ✅ S4b | ActivityKit 远程 update/end 推送 |
 | POST | `/:device_key/...` | ✅ S3 | V1 路径参数兼容 |
 
 详见 [doc/plan.md](../doc/plan.md) 服务器端实施计划部分。
+
+### Live Activity push
+
+`/liveactivity/:token` 的 `token` 是 iOS `Activity.pushTokenUpdates` 产出的
+per-activity APNs token,不是 `/register` 存入 KV 的 Bark `device_key`。
+
+```bash
+curl -X POST "https://barkmate.we2.xyz/liveactivity/$ACTIVITY_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+    "event": "update",
+    "content_state": {
+      "status": "running",
+      "progress": "3/8",
+      "eta": "2026-06-04T12:00:00Z"
+    },
+    "priority": 10,
+    "collapse_id": "demo-agent::task-1"
+  }'
+```
+
+支持 `event=update|end`。server 会使用 APNs topic
+`<APNS_TOPIC>.push-type.liveactivity` 和 `apns-push-type: liveactivity`。
 
 ## CI / 部署
 

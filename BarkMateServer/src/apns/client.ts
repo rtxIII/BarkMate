@@ -12,8 +12,9 @@ export interface ApnsPushRequest {
   env: 'sandbox' | 'production';
   deviceToken: string;
   payload: Record<string, unknown>;
-  pushType: 'alert' | 'background';
+  pushType: 'alert' | 'background' | 'liveactivity';
   collapseId?: string;
+  priority?: 5 | 10;
 }
 
 export interface ApnsResult {
@@ -33,6 +34,7 @@ export async function pushToApns(req: ApnsPushRequest): Promise<ApnsResult> {
     'content-type': 'application/json',
   };
   if (req.collapseId) headers['apns-collapse-id'] = req.collapseId;
+  if (req.priority !== undefined) headers['apns-priority'] = String(req.priority);
 
   const response = await fetch(url, {
     method: 'POST',

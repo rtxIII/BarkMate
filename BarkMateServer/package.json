@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "BarkMate push notification server (Cloudflare Workers + KV).",
+  "description": "BarkAgent push notification server (Cloudflare Workers + KV).",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

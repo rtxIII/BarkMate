@@ -1,5 +1,5 @@
 ---
-title: BarkMate Privacy Boundary Audit
+title: BarkAgent Privacy Boundary Audit
 version: 1.0
 generated: 2026-05-27
 scope: V1.0 candidate (iOS Phase 1-4 + Server S4a)
@@ -7,7 +7,7 @@ scope: V1.0 candidate (iOS Phase 1-4 + Server S4a)
 
 # 隐私边界审计 / Privacy Boundary Audit
 
-本文档以可复现的 grep / dependency 证据,证明 BarkMate V1.0 候选版本除
+本文档以可复现的 grep / dependency 证据,证明 BarkAgent V1.0 候选版本除
 "用户配置的 Bark 服务器" + "Apple APNs" 外不发起任何第三方网络出口,
 且不集成任何分析 / 崩溃上报 / 广告 SDK。
 
@@ -35,7 +35,7 @@ iOS 内除 C-1 / C-2 / C-3 之外**没有**任何 `URLSession.data(...)` /
 `URLRequest` / `URLProtocol` 调用。其余 `fetch(...)` 命中均是 SwiftData
 的 `ModelContext.fetch`(本地数据库),非网络。
 
-### 1.2 BarkMate 服务器
+### 1.2 BarkAgent 服务器
 
 | 编号 | 出口 | 触发条件 | 协议 | 文件 |
 |---|---|---|---|---|
@@ -63,7 +63,7 @@ grep -rEn "fetch\(|new URL|Request\(" BarkMateServer/src
 
 复现:
 ```sh
-grep -rEn "import (Sentry|Firebase|Analytics|Crashlytics|Mixpanel|Amplitude|Segment|Bugsnag|Datadog|GoogleAnalytics|FBSDKCore|OneSignal|Pushy|AppsFlyer|Adjust|Branch|LaunchDarkly|SKAdNetwork)" BarkMate
+grep -rEn "import (Sentry|Firebase|Analytics|Crashlytics|Mixpanel|Amplitude|Segment|Bugsnag|Datadog|GoogleAnalytics|FBSDKCore|OneSignal|Pushy|AppsFlyer|Adjust|Branch|LaunchDarkly|SKAdNetwork)" BarkAgent
 # 输出: (空)
 ```
 
@@ -136,7 +136,7 @@ SwiftData 中只有以下用户数据,全部位于
 ### 3.4 Keychain 范围
 
 ```sh
-grep -rEn "kSecAttrAccessGroup|Keychain" BarkMate --include='*.swift' | grep -v Tests
+grep -rEn "kSecAttrAccessGroup|Keychain" BarkAgent --include='*.swift' | grep -v Tests
 ```
 
 Keychain 仅存:
@@ -172,7 +172,7 @@ grep -En "NSAppTransportSecurity|NSAllowsArbitraryLoads" BarkMate/App/Info.plist
 | 删除全部本地数据 | iOS Settings → 卸载 App | App Group 容器与 Keychain 项一并清除 |
 | 自部署服务器 | `BarkMateServer/README.md` 全流程文档 | 用户可完全脱离我们运营的实例 |
 | 关闭 E2EE | App 不写入 `CryptoConfig` | 服务器透传明文 payload(仍走 TLS) |
-| 撤销通知权限 | iOS Settings → BarkMate → Notifications | iOS 自动作废 APNs token |
+| 撤销通知权限 | iOS Settings → BarkAgent → Notifications | iOS 自动作废 APNs token |
 
 ## 6. 审计签名
 
@@ -187,7 +187,7 @@ CI 建议(后续接入,不阻塞 V1.0):
 
 ```sh
 # Fail if new SDK or domain literal lands without docs touch
-grep -rE "(api\.|sdk\.|telemetry\.|analytics\.)" --include='*.swift' BarkMate \
+grep -rE "(api\.|sdk\.|telemetry\.|analytics\.)" --include='*.swift' BarkAgent \
   | grep -vE "barkmate\.we2\.xyz|push\.apple\.com|user-configured" \
   && exit 1 || true
 ```
