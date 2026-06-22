@@ -1,0 +1,2055 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BarkMate · Mission Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --void: #0a0d0c;
+      --hull: #131816;
+      --hull-up: #1a201d;
+      --rule: #2a302d;
+      --rule-hot: #3a423e;
+      --ink: #e8ebd8;
+      --ink-soft: #98a092;
+
+      --amber: #ffb000;
+      --amber-glow: rgba(255, 176, 0, .14);
+      --cyan: #5ce1e6;
+      --cyan-glow: rgba(92, 225, 230, .14);
+      --magenta: #ff4d8d;
+      --magenta-glow: rgba(255, 77, 141, .14);
+      --lime: #c4f154;
+      --lime-glow: rgba(196, 241, 84, .14);
+      --orange: #ff6b35;
+      --orange-glow: rgba(255, 107, 53, .14);
+      --slate: #717771;
+
+      --mono: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+      --display: "Inter Tight", system-ui, sans-serif;
+      --serif: "Instrument Serif", "Iowan Old Style", serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: var(--mono);
+      background: var(--void);
+      background-image:
+        radial-gradient(circle at 12% 6%, rgba(255, 176, 0, .08), transparent 32%),
+        radial-gradient(circle at 88% 92%, rgba(92, 225, 230, .07), transparent 36%),
+        linear-gradient(180deg, #0a0d0c 0%, #0d100e 100%);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image:
+        linear-gradient(rgba(232, 235, 216, .025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(232, 235, 216, .025) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: radial-gradient(circle at 50% 30%, black, transparent 85%);
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(232, 235, 216, .012) 2px,
+        rgba(232, 235, 216, .012) 3px
+      );
+    }
+
+    .board {
+      position: relative;
+      z-index: 1;
+      padding: 36px clamp(20px, 4vw, 64px) 80px;
+    }
+
+    /* ───── Masthead — terminal header ───── */
+    .masthead {
+      max-width: 1320px;
+      margin: 0 auto 56px;
+    }
+
+    .term-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      border: 1px solid var(--rule);
+      background: var(--hull);
+      font-size: 11px;
+      letter-spacing: .08em;
+      color: var(--ink-soft);
+    }
+
+    .term-bar .lights {
+      display: flex;
+      gap: 6px;
+    }
+    .term-bar .lights i {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--rule-hot);
+    }
+    .term-bar .lights i:nth-child(1) { background: var(--orange); }
+    .term-bar .lights i:nth-child(2) { background: var(--amber); }
+    .term-bar .lights i:nth-child(3) { background: var(--lime); }
+
+    .term-bar .title {
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .term-bar .right {
+      display: flex;
+      gap: 18px;
+    }
+
+    .hero {
+      position: relative;
+      padding: 40px 0 32px;
+      border: 1px solid var(--rule);
+      border-top: 0;
+      background:
+        linear-gradient(180deg, var(--hull) 0%, var(--void) 100%);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr);
+      gap: 56px;
+      padding: 0 40px;
+      align-items: start;
+    }
+
+    .hero .tag-line {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 22px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .24em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+
+    .hero .tag-line .pulse {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--lime);
+      box-shadow: 0 0 0 4px var(--lime-glow);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .hero .tag-line .px {
+      color: var(--lime);
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 4px var(--lime-glow); }
+      50%      { box-shadow: 0 0 0 8px rgba(196, 241, 84, .06); }
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: clamp(64px, 9vw, 144px);
+      line-height: .82;
+      letter-spacing: -.05em;
+      color: var(--ink);
+    }
+
+    .hero h1 .serif {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--amber);
+    }
+
+    .hero h1 .stroke {
+      -webkit-text-stroke: 2px var(--ink);
+      color: transparent;
+    }
+
+    .hero .lede {
+      margin: 28px 0 0;
+      max-width: 560px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--ink-soft);
+      font-weight: 500;
+    }
+
+    .hero .lede strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    /* Telemetry panel */
+    .telemetry {
+      padding: 20px;
+      border: 1px solid var(--rule);
+      background: var(--void);
+    }
+
+    .telemetry .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 18px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--rule);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+
+    .telemetry .header .live { color: var(--lime); }
+
+    .tel-row {
+      display: grid;
+      grid-template-columns: 28px 1fr auto auto;
+      gap: 10px;
+      padding: 9px 0;
+      border-bottom: 1px dashed var(--rule);
+      align-items: baseline;
+      font-size: 11px;
+      transition: padding .2s ease;
+      cursor: pointer;
+    }
+    .tel-row:hover { padding-left: 4px; color: var(--ink); }
+    .tel-row:last-child { border-bottom: 0; }
+    .tel-row .id {
+      font-weight: 700;
+      color: var(--ink-soft);
+      letter-spacing: .04em;
+    }
+    .tel-row .label {
+      color: var(--ink);
+      font-weight: 500;
+      text-decoration: none;
+    }
+    .tel-row .pg {
+      color: var(--ink-soft);
+      font-size: 10px;
+    }
+    .tel-row .st {
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      font-size: 10px;
+    }
+    .tel-row .st.wait { color: var(--amber); }
+    .tel-row .st.ok { color: var(--lime); }
+    .tel-row .st.run { color: var(--cyan); }
+    .tel-row .st.cfg { color: var(--magenta); }
+    .tel-row .st.err { color: var(--orange); }
+
+    /* ───── Screens grid ───── */
+    .screens {
+      max-width: 1500px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(370px, 1fr));
+      gap: 36px;
+      align-items: start;
+    }
+
+    .screen-block {
+      min-width: 0;
+    }
+
+    .screen-meta {
+      padding: 18px;
+      border: 1px solid var(--rule);
+      background: var(--hull);
+      margin-bottom: 22px;
+    }
+    .screen-meta .crumbs {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    .screen-meta .crumbs .id { color: var(--amber); }
+    .screen-meta .crumbs .ts { color: var(--ink-soft); }
+    .screen-meta h2 {
+      margin: 0 0 10px;
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 30px;
+      line-height: .96;
+      letter-spacing: -.035em;
+      color: var(--ink);
+    }
+    .screen-meta h2 .serif {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--amber);
+    }
+    .screen-meta p {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--ink-soft);
+    }
+
+    /* ───── Phone frame ───── */
+    .phone {
+      position: relative;
+      width: 100%;
+      max-width: 390px;
+      height: 812px;
+      margin: 0 auto;
+      padding: 10px;
+      border-radius: 48px;
+      background: #050706;
+      box-shadow:
+        0 0 0 1px rgba(232, 235, 216, .04),
+        0 30px 90px rgba(0, 0, 0, .5),
+        inset 0 0 0 1px rgba(232, 235, 216, .04);
+    }
+    .phone::before {
+      content: "";
+      position: absolute;
+      z-index: 5;
+      top: 10px;
+      left: 50%;
+      width: 116px;
+      height: 30px;
+      transform: translateX(-50%);
+      border-radius: 0 0 18px 18px;
+      background: #050706;
+    }
+
+    .screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 38px;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 80% -4%, rgba(255, 176, 0, .12), transparent 28%),
+        radial-gradient(circle at 8% 96%, rgba(92, 225, 230, .08), transparent 32%),
+        linear-gradient(180deg, #0c100e 0%, #080a09 100%);
+    }
+
+    .screen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(232, 235, 216, .015) 2px,
+        rgba(232, 235, 216, .015) 3px
+      );
+    }
+
+    .statusbar {
+      height: 48px;
+      padding: 14px 22px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .signal { display: flex; align-items: center; gap: 5px; }
+    .signal i { display: block; width: 4px; border-radius: 1px; background: currentColor; }
+    .signal i:nth-child(1) { height: 6px; opacity: .45; }
+    .signal i:nth-child(2) { height: 9px; opacity: .65; }
+    .signal i:nth-child(3) { height: 12px; opacity: .9; }
+    .battery {
+      width: 24px;
+      height: 11px;
+      border: 1.4px solid currentColor;
+      border-radius: 2px;
+      position: relative;
+    }
+    .battery::before {
+      content: "";
+      position: absolute;
+      inset: 1.6px 6px 1.6px 1.6px;
+      background: var(--lime);
+    }
+
+    /* ───── Console header ───── */
+    .console-hd {
+      padding: 6px 18px 0;
+    }
+    .console-hd .crumbs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      margin-bottom: 6px;
+    }
+    .console-hd .crumbs .seg { color: var(--amber); }
+    .console-hd .crumbs .div { color: var(--rule-hot); }
+    .console-hd .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .console-hd h3 {
+      margin: 0;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: 30px;
+      line-height: .94;
+      letter-spacing: -.04em;
+      color: var(--ink);
+    }
+    .console-hd h3 .serif {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--amber);
+    }
+    .ic-btn {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--rule-hot);
+      background: var(--hull);
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .2s ease;
+    }
+    .ic-btn:hover {
+      background: var(--amber);
+      color: var(--void);
+      border-color: var(--amber);
+    }
+
+    .content {
+      height: calc(100% - 100px - 60px);
+      overflow: hidden;
+      padding: 14px 16px 0;
+    }
+
+    /* ───── Tab bar (segmented terminal) ───── */
+    .tabbar {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 16px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border: 1px solid var(--rule);
+      background: var(--hull);
+    }
+    .tabbar div {
+      padding: 12px 4px 10px;
+      text-align: center;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      border-right: 1px solid var(--rule);
+      cursor: pointer;
+      transition: all .2s ease;
+    }
+    .tabbar div:last-child { border-right: 0; }
+    .tabbar div b {
+      display: block;
+      font-family: var(--mono);
+      font-size: 14px;
+      margin-bottom: 4px;
+      font-weight: 700;
+    }
+    .tabbar .active {
+      background: var(--amber);
+      color: var(--void);
+    }
+    .tabbar div:hover:not(.active) { color: var(--ink); background: var(--hull-up); }
+
+    /* ───── Triage hero ───── */
+    .heads-up {
+      padding: 14px;
+      border: 1px solid var(--rule);
+      background: var(--hull);
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .heads-up .head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 14px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+    .heads-up .head .pulse {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--lime);
+    }
+    .heads-up .head .pulse i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--lime);
+      box-shadow: 0 0 8px var(--lime);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .triage {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 8px;
+    }
+    .tri-cell {
+      padding: 10px 10px;
+      border: 1px solid var(--rule);
+      background: var(--void);
+      position: relative;
+    }
+    .tri-cell .num {
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: 44px;
+      line-height: .88;
+      letter-spacing: -.05em;
+    }
+    .tri-cell .lbl {
+      display: block;
+      margin-top: 6px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+    .tri-cell .sub {
+      display: block;
+      margin-top: 2px;
+      font-size: 9.5px;
+      color: var(--ink-soft);
+    }
+    .tri-cell.alert .num { color: var(--amber); }
+    .tri-cell.alert { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber-glow); }
+    .tri-cell.run .num { color: var(--cyan); }
+    .tri-cell.idle .num { color: var(--slate); }
+
+    /* ───── Section heading (console) ───── */
+    .sec-hd {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 18px 0 8px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    .sec-hd .lhs { color: var(--ink); }
+    .sec-hd .lhs::before {
+      content: "▸ ";
+      color: var(--amber);
+    }
+    .sec-hd .rhs { color: var(--ink-soft); }
+
+    /* ───── Attention card (large) ───── */
+    .a-card {
+      position: relative;
+      padding: 14px 14px 14px 18px;
+      border: 1px solid var(--amber);
+      background: linear-gradient(180deg, rgba(255, 176, 0, .06), transparent 100%);
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all .25s ease;
+    }
+    .a-card::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--amber);
+      box-shadow: 0 0 12px var(--amber-glow);
+    }
+    .a-card.stuck { border-color: var(--orange); }
+    .a-card.stuck::before { background: var(--orange); box-shadow: 0 0 12px var(--orange-glow); }
+    .a-card:hover { background: linear-gradient(180deg, rgba(255, 176, 0, .12), transparent 100%); }
+
+    .a-card .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .a-card .who {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 17px;
+      line-height: 1;
+      letter-spacing: -.025em;
+      color: var(--ink);
+    }
+    .a-card .who .serif {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--amber);
+    }
+    .a-card .code-line {
+      display: block;
+      margin-top: 4px;
+      font-size: 9.5px;
+      color: var(--ink-soft);
+      letter-spacing: .04em;
+    }
+    .a-card .ask {
+      margin: 12px 0 12px;
+      padding-left: 12px;
+      border-left: 2px solid var(--rule-hot);
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+    .a-card .ask::before {
+      content: "» ";
+      color: var(--amber);
+      font-weight: 700;
+    }
+    .a-card .meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: var(--ink-soft);
+      letter-spacing: .04em;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 6px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      border: 1px solid currentColor;
+    }
+    .badge.wait { color: var(--amber); background: var(--amber-glow); }
+    .badge.block { color: var(--orange); background: var(--orange-glow); }
+    .badge.run { color: var(--cyan); background: var(--cyan-glow); }
+    .badge.done { color: var(--lime); background: var(--lime-glow); }
+    .badge.fail { color: var(--magenta); background: var(--magenta-glow); }
+    .badge.stale { color: var(--slate); background: rgba(113, 119, 113, .14); }
+
+    /* ───── Compact running rows ───── */
+    .r-row {
+      display: grid;
+      grid-template-columns: 28px 1fr 90px auto;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--rule);
+      align-items: center;
+      cursor: pointer;
+      font-size: 11px;
+      transition: padding .15s ease;
+    }
+    .r-row:hover { padding-left: 4px; }
+    .r-row:last-child { border-bottom: 0; }
+    .r-row .av {
+      font-weight: 700;
+      font-size: 10px;
+      color: var(--cyan);
+      letter-spacing: .04em;
+    }
+    .r-row .body strong {
+      display: block;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: -.02em;
+      color: var(--ink);
+    }
+    .r-row .body small {
+      display: block;
+      margin-top: 2px;
+      font-size: 9.5px;
+      color: var(--ink-soft);
+    }
+    .r-row .bar {
+      height: 4px;
+      background: var(--rule);
+      position: relative;
+    }
+    .r-row .bar i {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      background: var(--cyan);
+      box-shadow: 0 0 6px var(--cyan-glow);
+    }
+    .r-row .pct {
+      font-weight: 700;
+      font-size: 11px;
+      color: var(--cyan);
+      letter-spacing: .04em;
+      text-align: right;
+    }
+    .r-row.done .av { color: var(--lime); }
+    .r-row.done .bar i { background: var(--lime); }
+    .r-row.done .pct { color: var(--lime); }
+
+    /* ───── Setup ───── */
+    .setup-hero {
+      padding: 20px 4px 18px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .setup-hero .label {
+      display: inline-block;
+      padding: 4px 8px;
+      background: var(--amber);
+      color: var(--void);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .setup-hero h4 {
+      margin: 0;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: 34px;
+      line-height: .92;
+      letter-spacing: -.045em;
+      color: var(--ink);
+    }
+    .setup-hero h4 .serif {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--amber);
+    }
+    .setup-hero p {
+      margin: 12px 0 0;
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--ink-soft);
+    }
+
+    .code-blk {
+      margin-top: 14px;
+      padding: 14px 16px;
+      background: var(--void);
+      border: 1px solid var(--rule);
+      border-left: 3px solid var(--amber);
+      font-size: 10px;
+      line-height: 1.7;
+      color: var(--ink);
+      position: relative;
+    }
+    .code-blk::before {
+      content: "$ shell";
+      position: absolute;
+      top: -1px;
+      right: -1px;
+      padding: 2px 8px;
+      background: var(--amber);
+      color: var(--void);
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    .code-blk .k { color: var(--cyan); }
+    .code-blk .s { color: var(--lime); }
+    .code-blk .c { color: var(--slate); }
+
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .btn {
+      padding: 11px 8px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: 1px solid var(--amber);
+      background: var(--amber);
+      color: var(--void);
+      transition: all .2s ease;
+    }
+    .btn:hover { background: var(--lime); border-color: var(--lime); }
+    .btn.ghost {
+      background: transparent;
+      color: var(--ink);
+      border-color: var(--rule-hot);
+    }
+    .btn.ghost:hover {
+      border-color: var(--amber);
+      color: var(--amber);
+    }
+    .btn.dim {
+      background: transparent;
+      color: var(--ink-soft);
+      border-color: var(--rule);
+    }
+    .btn.dim:hover {
+      color: var(--ink);
+      border-color: var(--rule-hot);
+    }
+
+    .field-key {
+      margin-top: 16px;
+      padding: 14px;
+      border: 1px solid var(--rule);
+      background: var(--hull);
+    }
+    .field-key .row {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 12px;
+      padding: 6px 0;
+      border-bottom: 1px dashed var(--rule);
+      font-size: 11px;
+    }
+    .field-key .row:last-child { border-bottom: 0; }
+    .field-key .k {
+      color: var(--cyan);
+      font-weight: 700;
+    }
+    .field-key .v {
+      color: var(--ink-soft);
+      line-height: 1.45;
+    }
+
+    /* ───── Detail hero ───── */
+    .d-hero {
+      padding: 16px;
+      border: 1px solid var(--amber);
+      background: linear-gradient(180deg, rgba(255, 176, 0, .08), transparent);
+      position: relative;
+    }
+    .d-hero::before {
+      content: "";
+      position: absolute;
+      left: -1px;
+      top: -1px;
+      width: 28px;
+      height: 28px;
+      border-top: 2px solid var(--amber);
+      border-left: 2px solid var(--amber);
+    }
+    .d-hero::after {
+      content: "";
+      position: absolute;
+      right: -1px;
+      bottom: -1px;
+      width: 28px;
+      height: 28px;
+      border-bottom: 2px solid var(--amber);
+      border-right: 2px solid var(--amber);
+    }
+    .d-hero .who {
+      margin: 10px 0 4px;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: 32px;
+      line-height: 1;
+      letter-spacing: -.04em;
+      color: var(--ink);
+    }
+    .d-hero .who .serif {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--amber);
+    }
+    .d-hero .code-line {
+      font-size: 10px;
+      color: var(--ink-soft);
+      letter-spacing: .04em;
+    }
+    .d-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .d-metric {
+      padding: 8px 10px;
+      background: var(--void);
+      border: 1px solid var(--rule);
+    }
+    .d-metric b {
+      display: block;
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 18px;
+      letter-spacing: -.03em;
+      color: var(--ink);
+    }
+    .d-metric span {
+      display: block;
+      margin-top: 2px;
+      font-size: 8.5px;
+      font-weight: 600;
+      color: var(--ink-soft);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .summary-box {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border: 1px dashed var(--rule-hot);
+      background: var(--hull);
+    }
+    .summary-box .tag {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--lime);
+    }
+    .summary-box p {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--ink);
+    }
+
+    .d-actions {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .d-actions .btn {
+      padding: 9px 4px;
+      font-size: 9px;
+      letter-spacing: .14em;
+    }
+
+    .step-list {
+      margin-top: 10px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--rule);
+      cursor: pointer;
+      transition: padding .15s ease;
+    }
+    .step:hover { padding-left: 4px; }
+    .step:last-child { border-bottom: 0; }
+    .step time {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--amber);
+      letter-spacing: .04em;
+    }
+    .step time::after {
+      content: "";
+      display: block;
+      margin-top: 6px;
+      width: 36px;
+      height: 1px;
+      background: var(--rule-hot);
+    }
+    .step strong {
+      display: block;
+      margin-top: 6px;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 13.5px;
+      letter-spacing: -.02em;
+      color: var(--ink);
+    }
+    .step p {
+      margin: 4px 0 0;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--ink-soft);
+    }
+
+    /* ───── History ───── */
+    .h-banner {
+      padding: 16px;
+      background: linear-gradient(135deg, var(--amber) 0%, var(--orange) 100%);
+      color: var(--void);
+      margin-bottom: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .h-banner::after {
+      content: "";
+      position: absolute;
+      right: -40px;
+      top: -40px;
+      width: 100px;
+      height: 100px;
+      border: 3px solid var(--void);
+      border-radius: 50%;
+      opacity: .12;
+    }
+    .h-banner small {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+    }
+    .h-banner h4 {
+      margin: 8px 0 0;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: 22px;
+      line-height: 1.05;
+      letter-spacing: -.03em;
+    }
+    .h-banner h4 .serif {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+    }
+
+    .chips {
+      display: flex;
+      gap: 6px;
+      padding: 4px 0 12px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .chip {
+      padding: 5px 9px;
+      border: 1px solid var(--rule-hot);
+      background: var(--hull);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      cursor: pointer;
+      transition: all .2s ease;
+    }
+    .chip:hover { color: var(--ink); border-color: var(--ink-soft); }
+    .chip.active {
+      background: var(--ink);
+      color: var(--void);
+      border-color: var(--ink);
+    }
+
+    .h-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+    .h-item strong {
+      display: block;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 13.5px;
+      letter-spacing: -.02em;
+      color: var(--ink);
+    }
+    .h-item p {
+      margin: 4px 0 0;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--ink-soft);
+    }
+    .h-item .time {
+      text-align: right;
+      font-size: 10px;
+      color: var(--amber);
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .h-item .time small {
+      display: block;
+      margin-top: 4px;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+
+    /* ───── Search ───── */
+    .s-input {
+      padding: 14px 14px;
+      border: 1px solid var(--rule);
+      background: var(--hull);
+      border-left: 4px solid var(--amber);
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      font-size: 18px;
+      letter-spacing: -.02em;
+    }
+    .s-input .pr {
+      color: var(--amber);
+      font-weight: 700;
+    }
+    .s-input .q {
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .s-input .caret {
+      display: inline-block;
+      width: 8px;
+      height: 18px;
+      background: var(--amber);
+      animation: blink 1.1s infinite;
+      transform: translateY(2px);
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+    .s-input .clear {
+      margin-left: auto;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      cursor: pointer;
+    }
+
+    .s-meta {
+      padding: 10px 0;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      border-bottom: 1px solid var(--rule);
+    }
+    .s-meta .hit { color: var(--amber); }
+
+    .s-res {
+      display: grid;
+      grid-template-columns: 56px 1fr auto;
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--rule);
+      cursor: pointer;
+      transition: padding .15s ease;
+      align-items: baseline;
+    }
+    .s-res:hover { padding-left: 4px; }
+    .s-res .kind {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .s-res .kind.a { color: var(--magenta); }
+    .s-res .kind.s { color: var(--cyan); }
+    .s-res .kind.m { color: var(--lime); }
+    .s-res .body strong {
+      display: block;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 13.5px;
+      letter-spacing: -.02em;
+      color: var(--ink);
+    }
+    .s-res .body p {
+      margin: 3px 0 0;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--ink-soft);
+    }
+    .s-res .body em.hit {
+      font-style: normal;
+      background: var(--amber);
+      color: var(--void);
+      padding: 0 4px;
+      font-weight: 700;
+    }
+    .s-res time {
+      font-size: 10px;
+      color: var(--ink-soft);
+      letter-spacing: .04em;
+    }
+
+    /* ───── Settings ───── */
+    .seg-hd {
+      margin: 18px 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--rule);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .seg-hd h5 {
+      margin: 0;
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--ink);
+    }
+    .seg-hd h5::before {
+      content: "▸ ";
+      color: var(--amber);
+    }
+    .seg-hd span {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+
+    .s-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--rule);
+      align-items: center;
+    }
+    .s-row strong {
+      display: block;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: -.02em;
+      color: var(--ink);
+    }
+    .s-row p {
+      margin: 3px 0 0;
+      font-size: 10.5px;
+      line-height: 1.45;
+      color: var(--ink-soft);
+    }
+    .s-row .val {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--amber);
+      letter-spacing: .08em;
+    }
+    .s-row .val.dim { color: var(--ink-soft); }
+    .s-row .val.on {
+      padding: 4px 7px;
+      border: 1px solid var(--lime);
+      color: var(--lime);
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      font-size: 9px;
+    }
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 22px;
+      border: 1px solid var(--rule-hot);
+      background: var(--hull);
+      cursor: pointer;
+    }
+    .toggle::before {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: var(--ink-soft);
+      transition: all .25s ease;
+    }
+    .toggle.on { background: var(--amber); border-color: var(--amber); }
+    .toggle.on::before {
+      transform: translateX(22px);
+      background: var(--void);
+    }
+
+    /* ───── Live Activity ───── */
+    .lock {
+      height: calc(100% - 48px);
+      padding: 22px 22px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+    .island {
+      width: 140px;
+      height: 38px;
+      margin: 0 auto;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      color: var(--ink);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .island i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 8px var(--amber);
+    }
+    .island b { color: var(--amber); letter-spacing: .14em; }
+    .clock {
+      margin-top: 18px;
+      text-align: center;
+      font-family: var(--display);
+      font-weight: 200;
+      font-size: 110px;
+      line-height: .82;
+      letter-spacing: -.075em;
+      color: var(--ink);
+    }
+    .lock .date {
+      margin-top: 6px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      color: var(--ink-soft);
+      text-transform: uppercase;
+    }
+
+    .lock-card {
+      margin-top: auto;
+      padding: 16px 18px;
+      background: rgba(20, 24, 22, .78);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid var(--amber);
+      position: relative;
+    }
+    .lock-card::before {
+      content: "";
+      position: absolute;
+      left: -1px;
+      top: -1px;
+      width: 24px;
+      height: 24px;
+      border-top: 2px solid var(--amber);
+      border-left: 2px solid var(--amber);
+    }
+    .lock-card::after {
+      content: "";
+      position: absolute;
+      right: -1px;
+      bottom: -1px;
+      width: 24px;
+      height: 24px;
+      border-bottom: 2px solid var(--amber);
+      border-right: 2px solid var(--amber);
+    }
+    .lock-card .tag {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--amber);
+    }
+    .lock-card h4 {
+      margin: 8px 0 4px;
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 22px;
+      line-height: 1.05;
+      letter-spacing: -.03em;
+      color: var(--ink);
+    }
+    .lock-card h4 .serif {
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--amber);
+    }
+    .lock-card p {
+      margin: 0;
+      font-size: 11.5px;
+      line-height: 1.5;
+      color: var(--ink-soft);
+    }
+    .lock-card .bar {
+      margin-top: 14px;
+      height: 3px;
+      background: var(--rule);
+      position: relative;
+    }
+    .lock-card .bar i {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 57%;
+      background: var(--amber);
+      box-shadow: 0 0 8px var(--amber-glow);
+    }
+    .lock-card .foot {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+
+    @media (max-width: 900px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 32px; padding: 0 24px; }
+      .telemetry { max-width: 480px; }
+    }
+    @media (max-width: 460px) {
+      .board { padding: 20px 12px 48px; }
+      .screens { grid-template-columns: 1fr; gap: 24px; }
+      .phone { height: 780px; max-width: 360px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+
+    <!-- ───── Masthead ───── -->
+    <header class="masthead">
+      <div class="term-bar">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="title">BARKMATE / OPS / SCREEN-MOCK · v0.4</div>
+        <div class="right">
+          <span>2026.06.15</span>
+          <span>09:41:18 UTC+8</span>
+        </div>
+      </div>
+      <div class="hero">
+        <div class="hero-grid">
+          <div>
+            <div class="tag-line">
+              <span class="pulse"></span>
+              <span class="px">SYS · LIVE</span>
+              <span>—</span>
+              <span>7 SCREENS / 0 EDITS PENDING / IA REWRITE B</span>
+            </div>
+            <h1>
+              Mission <span class="serif">control</span><br/>
+              for your <span class="stroke">agents.</span>
+            </h1>
+            <p class="lede">这是 Mock B — Mission Control 战术控制台风格。Tab bar 改为 <strong>Agents / History / Search / Settings</strong>，首屏直接 triage 出 <strong>"需要你看一眼"</strong>。Setup 收进 Settings。reply 不做。状态用 [WAIT] / [STUCK] / [RUN] 等带括号的指挥语，色带是琥珀/青/橙/酸橙。</p>
+          </div>
+          <aside class="telemetry">
+            <div class="header">
+              <span>— INDEX · 7 OF 7 —</span>
+              <span class="live">● ONLINE</span>
+            </div>
+            <a class="tel-row" href="#b-setup">
+              <span class="id">01</span>
+              <span class="label">Empty &amp; Setup</span>
+              <span class="pg">P.01</span>
+              <span class="st cfg">CFG</span>
+            </a>
+            <a class="tel-row" href="#b-dashboard">
+              <span class="id">02</span>
+              <span class="label">Today / Triage</span>
+              <span class="pg">P.02</span>
+              <span class="st wait">WAIT</span>
+            </a>
+            <a class="tel-row" href="#b-detail">
+              <span class="id">03</span>
+              <span class="label">Agent dossier</span>
+              <span class="pg">P.03</span>
+              <span class="st wait">WAIT</span>
+            </a>
+            <a class="tel-row" href="#b-history">
+              <span class="id">04</span>
+              <span class="label">Archive &amp; memos</span>
+              <span class="pg">P.04</span>
+              <span class="st ok">OK</span>
+            </a>
+            <a class="tel-row" href="#b-search">
+              <span class="id">05</span>
+              <span class="label">Lookup</span>
+              <span class="pg">P.05</span>
+              <span class="st run">RUN</span>
+            </a>
+            <a class="tel-row" href="#b-settings">
+              <span class="id">06</span>
+              <span class="label">Settings</span>
+              <span class="pg">P.06</span>
+              <span class="st ok">OK</span>
+            </a>
+            <a class="tel-row" href="#b-live">
+              <span class="id">07</span>
+              <span class="label">Live Activity</span>
+              <span class="pg">P.07</span>
+              <span class="st cfg">v1.1</span>
+            </a>
+          </aside>
+        </div>
+      </div>
+    </header>
+
+    <!-- ───── Screens ───── -->
+    <section class="screens">
+
+      <!-- ─── 01 SETUP ─── -->
+      <article class="screen-block" id="b-setup">
+        <div class="screen-meta">
+          <div class="crumbs"><span class="id">[01 / CFG]</span><span class="ts">first push · onboarding</span></div>
+          <h2>Empty &amp; <span class="serif">Setup</span></h2>
+          <p>Empty state 提供可复制 curl 与字段表，Setup 不再占 Tab，归入 Settings 内的接入向导。</p>
+        </div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
+          <div class="console-hd">
+            <div class="crumbs"><span>SYS</span><span class="div">/</span><span class="seg">SETUP</span><span class="div">/</span><span>0001</span></div>
+            <div class="row">
+              <h3>First <span class="serif">push</span></h3>
+              <div class="ic-btn">?</div>
+            </div>
+          </div>
+          <div class="content">
+            <div class="setup-hero">
+              <span class="label">— Onboarding —</span>
+              <h4>One push.<br/>One <span class="serif">living</span> card.</h4>
+              <p>带上 agent_status + task_id，同任务原地更新，不堆成消息流。把 Bark 的推送能力折叠成可读的 agent 状态。</p>
+            </div>
+            <div class="code-blk">
+              <span class="c">// curl template — copy &amp; ship</span><br/>
+              curl -X POST <span class="s">"https://api.day.app/&lt;key&gt;"</span> \<br/>
+              &nbsp;&nbsp;-d <span class="k">group</span>=<span class="s">backend-refactor</span> \<br/>
+              &nbsp;&nbsp;-d <span class="k">task_id</span>=<span class="s">auth-migration-0420</span> \<br/>
+              &nbsp;&nbsp;-d <span class="k">agent_status</span>=<span class="s">running</span> \<br/>
+              &nbsp;&nbsp;-d <span class="k">progress</span>=<span class="s">3/8</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn">Copy curl</button>
+              <button class="btn ghost">Send demo</button>
+            </div>
+            <div class="field-key">
+              <div class="row"><span class="k">group</span><span class="v">→ agent_id · 同一类 agent 的命名空间</span></div>
+              <div class="row"><span class="k">task_id</span><span class="v">→ 聚合键 · 决定是否原地更新</span></div>
+              <div class="row"><span class="k">agent_status</span><span class="v">running · waiting_input · blocked · done · failed</span></div>
+              <div class="row"><span class="k">legacy push</span><span class="v">不带 agent_status — 进入 History，不污染 Agents</span></div>
+            </div>
+          </div>
+          <div class="tabbar">
+            <div><b>▦</b>Agents</div>
+            <div><b>※</b>History</div>
+            <div><b>⌕</b>Search</div>
+            <div class="active"><b>⚙</b>Settings</div>
+          </div>
+        </div></div>
+      </article>
+
+      <!-- ─── 02 DASHBOARD ─── -->
+      <article class="screen-block" id="b-dashboard">
+        <div class="screen-meta">
+          <div class="crumbs"><span class="id">[02 / WAIT]</span><span class="ts">heads-up · core</span></div>
+          <h2>Today <span class="serif">at a glance</span></h2>
+          <p>顶部 triage 三栏直接回答 "现在有谁等我看一眼"。要紧的两张大卡在上，其它收为紧凑行。</p>
+        </div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
+          <div class="console-hd">
+            <div class="crumbs"><span>OPS</span><span class="div">/</span><span class="seg">TODAY</span><span class="div">/</span><span>MON · 0615</span></div>
+            <div class="row">
+              <h3><span class="serif">Today.</span></h3>
+              <div class="ic-btn">⌁</div>
+            </div>
+          </div>
+          <div class="content">
+            <div class="heads-up">
+              <div class="head">
+                <span>— HEADS-UP / 06 AGENTS —</span>
+                <span class="pulse"><i></i>LIVE</span>
+              </div>
+              <div class="triage">
+                <div class="tri-cell alert">
+                  <span class="num">2</span>
+                  <span class="lbl">Needs you</span>
+                  <span class="sub">wait + stuck</span>
+                </div>
+                <div class="tri-cell run">
+                  <span class="num">3</span>
+                  <span class="lbl">Running</span>
+                  <span class="sub">quietly working</span>
+                </div>
+                <div class="tri-cell idle">
+                  <span class="num">1</span>
+                  <span class="lbl">Settled</span>
+                  <span class="sub">done · 0 fail</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="sec-hd"><span class="lhs">Needs you</span><span class="rhs">02 cards</span></div>
+            <div class="a-card">
+              <div class="top">
+                <div>
+                  <div class="who">test-<span class="serif">writer</span></div>
+                  <span class="code-line">mock-coverage · TASK-0420 · 04/07</span>
+                </div>
+                <span class="badge wait">[ WAIT ]</span>
+              </div>
+              <div class="ask">Confirm overwrite existing mocks? The agent wants to replace test doubles in <code>__mocks__</code>.</div>
+              <div class="meta"><span>updated 2m ago</span><span>04 / 07</span></div>
+            </div>
+            <div class="a-card stuck">
+              <div class="top">
+                <div>
+                  <div class="who">log-<span class="serif">analyzer</span></div>
+                  <span class="code-line">grafana-query · TASK-0418 · 02/05</span>
+                </div>
+                <span class="badge block">[ STUCK ]</span>
+              </div>
+              <div class="ask">Missing Grafana token — cannot read panels. Add a token in Settings or skip this run.</div>
+              <div class="meta"><span>blocked 7m ago</span><span>02 / 05</span></div>
+            </div>
+
+            <div class="sec-hd"><span class="lhs">Running</span><span class="rhs">03 agents</span></div>
+            <div class="r-row">
+              <span class="av">BR</span>
+              <div class="body">
+                <strong>backend-refactor</strong>
+                <small>auth-migration · refactoring middleware</small>
+              </div>
+              <div class="bar"><i style="width:38%"></i></div>
+              <span class="pct">38%</span>
+            </div>
+            <div class="r-row">
+              <span class="av">DU</span>
+              <div class="body">
+                <strong>dependency-updater</strong>
+                <small>weekly-bump · installing packages</small>
+              </div>
+              <div class="bar"><i style="width:25%"></i></div>
+              <span class="pct">25%</span>
+            </div>
+            <div class="r-row">
+              <span class="av">DR</span>
+              <div class="body">
+                <strong>doc-renderer</strong>
+                <small>release-notes · drafting v0.4</small>
+              </div>
+              <div class="bar"><i style="width:66%"></i></div>
+              <span class="pct">66%</span>
+            </div>
+
+            <div class="sec-hd"><span class="lhs">Settled</span><span class="rhs">01</span></div>
+            <div class="r-row done">
+              <span class="av">ER</span>
+              <div class="body">
+                <strong>e2e-runner</strong>
+                <small>checkout-flow · 06/06 passed</small>
+              </div>
+              <div class="bar"><i style="width:100%"></i></div>
+              <span class="pct">DONE</span>
+            </div>
+          </div>
+          <div class="tabbar">
+            <div class="active"><b>▦</b>Agents</div>
+            <div><b>※</b>History</div>
+            <div><b>⌕</b>Search</div>
+            <div><b>⚙</b>Settings</div>
+          </div>
+        </div></div>
+      </article>
+
+      <!-- ─── 03 DETAIL ─── -->
+      <article class="screen-block" id="b-detail">
+        <div class="screen-meta">
+          <div class="crumbs"><span class="id">[03 / WAIT]</span><span class="ts">dossier · drill-down</span></div>
+          <h2>Agent <span class="serif">dossier</span></h2>
+          <p>状态条 + 三段 metric + 摘要 + step log。摘要标 [cached]，永远不替代原始 step。</p>
+        </div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
+          <div class="console-hd">
+            <div class="crumbs"><span>OPS</span><span class="div">/</span><span class="seg">DOSSIER</span><span class="div">/</span><span>TASK-0420</span></div>
+            <div class="row">
+              <h3>Dossier</h3>
+              <div class="ic-btn">···</div>
+            </div>
+          </div>
+          <div class="content">
+            <div class="d-hero">
+              <span class="badge wait">[ WAITING INPUT ]</span>
+              <div class="who">test-<span class="serif">writer</span></div>
+              <span class="code-line">mock-coverage · TASK-0420</span>
+              <div class="d-metrics">
+                <div class="d-metric"><b>04 / 07</b><span>progress</span></div>
+                <div class="d-metric"><b>02m</b><span>since update</span></div>
+                <div class="d-metric"><b>—</b><span>eta</span></div>
+              </div>
+            </div>
+
+            <div class="summary-box">
+              <span class="tag">[ on-device summary · cached ]</span>
+              <p>任务已完成 04 / 07 步，正在等待用户确认是否覆盖现有 mock。当前阻塞点是 confirm 提示，回复 yes 后可以继续生成测试。</p>
+            </div>
+
+            <div class="d-actions">
+              <button class="btn ghost">Pin</button>
+              <button class="btn ghost">Mute</button>
+              <button class="btn ghost">Archive</button>
+              <button class="btn">Done</button>
+            </div>
+
+            <div class="sec-hd" style="margin-top:18px"><span class="lhs">Step log</span><span class="rhs">03 pushes</span></div>
+            <div class="step-list">
+              <div class="step">
+                <time>10:31</time>
+                <div>
+                  <span class="badge wait">[ WAIT ]</span>
+                  <strong>Confirm overwrite existing mocks</strong>
+                  <p>The agent wants to replace existing test doubles in <code>__mocks__</code>.</p>
+                </div>
+              </div>
+              <div class="step">
+                <time>10:21</time>
+                <div>
+                  <span class="badge run">[ RUN ]</span>
+                  <strong>Generated new mock factories</strong>
+                  <p>Prepared mock factories for API and clock dependencies.</p>
+                </div>
+              </div>
+              <div class="step">
+                <time>10:18</time>
+                <div>
+                  <span class="badge run">[ RUN ]</span>
+                  <strong>Scanned test gaps</strong>
+                  <p>Found uncovered branches in payment and auth modules.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tabbar">
+            <div class="active"><b>▦</b>Agents</div>
+            <div><b>※</b>History</div>
+            <div><b>⌕</b>Search</div>
+            <div><b>⚙</b>Settings</div>
+          </div>
+        </div></div>
+      </article>
+
+      <!-- ─── 04 HISTORY ─── -->
+      <article class="screen-block" id="b-history">
+        <div class="screen-meta">
+          <div class="crumbs"><span class="id">[04 / OK]</span><span class="ts">archive · memos</span></div>
+          <h2>Archive &amp; <span class="serif">memos</span></h2>
+          <p>旧协议 Bark 推送、归档 AgentTask、用户 memo 同栏，按日期分组。</p>
+        </div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
+          <div class="console-hd">
+            <div class="crumbs"><span>SYS</span><span class="div">/</span><span class="seg">HISTORY</span><span class="div">/</span><span>JUN · 2026</span></div>
+            <div class="row">
+              <h3>History</h3>
+              <div class="ic-btn">+</div>
+            </div>
+          </div>
+          <div class="content">
+            <div class="h-banner">
+              <small>— OPS NOTE / 0615 —</small>
+              <h4>Messages become <span class="serif">context</span>, not noise.</h4>
+            </div>
+            <div class="chips">
+              <span class="chip active">All</span>
+              <span class="chip">Archived</span>
+              <span class="chip">Incoming</span>
+              <span class="chip">Memos</span>
+            </div>
+
+            <div class="sec-hd"><span class="lhs">Today</span><span class="rhs">02 items</span></div>
+            <div class="h-item">
+              <div>
+                <strong>Build finished</strong>
+                <p>Legacy Bark — main branch build completed in 12m32s.</p>
+              </div>
+              <div class="time">09:14<small>incoming</small></div>
+            </div>
+            <div class="h-item">
+              <div>
+                <strong>api-cleanup archived</strong>
+                <p>09 step pushes · 01 failed retry · marked done by user.</p>
+              </div>
+              <div class="time">08:02<small>agent</small></div>
+            </div>
+
+            <div class="sec-hd"><span class="lhs">Earlier · Jun 14</span><span class="rhs">02 items</span></div>
+            <div class="h-item">
+              <div>
+                <strong>Hook 接入备注</strong>
+                <p>Claude Code Stop hook 里追加 agent_status=done。</p>
+              </div>
+              <div class="time">22:48<small>memo</small></div>
+            </div>
+            <div class="h-item">
+              <div>
+                <strong>Deploy preview link</strong>
+                <p>Saved from Share Extension placeholder.</p>
+              </div>
+              <div class="time">16:12<small>memo</small></div>
+            </div>
+          </div>
+          <div class="tabbar">
+            <div><b>▦</b>Agents</div>
+            <div class="active"><b>※</b>History</div>
+            <div><b>⌕</b>Search</div>
+            <div><b>⚙</b>Settings</div>
+          </div>
+        </div></div>
+      </article>
+
+      <!-- ─── 05 SEARCH ─── -->
+      <article class="screen-block" id="b-search">
+        <div class="screen-meta">
+          <div class="crumbs"><span class="id">[05 / RUN]</span><span class="ts">lookup · retrieval</span></div>
+          <h2>Looking <span class="serif">up</span></h2>
+          <p>关键字优先，类型用三字母前缀区分（AGT / STP / MEM）。过滤折叠为可选 chip。</p>
+        </div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
+          <div class="console-hd">
+            <div class="crumbs"><span>SYS</span><span class="div">/</span><span class="seg">SEARCH</span><span class="div">/</span><span>q · "mock"</span></div>
+            <div class="row">
+              <h3>Search</h3>
+              <div class="ic-btn">⌘</div>
+            </div>
+          </div>
+          <div class="content">
+            <div class="s-input">
+              <span class="pr">›</span>
+              <span class="q">mock</span>
+              <span class="caret"></span>
+              <span class="clear">Clear</span>
+            </div>
+            <div class="chips" style="border-bottom:0;padding-top:10px">
+              <span class="chip active">All</span>
+              <span class="chip">Agents</span>
+              <span class="chip">Steps</span>
+              <span class="chip">Memos</span>
+            </div>
+
+            <div class="s-meta">— <span class="hit">04 hits</span> · last 7 days · sorted by relevance —</div>
+
+            <div class="s-res">
+              <span class="kind a">AGT</span>
+              <div class="body">
+                <strong>test-writer</strong>
+                <p>等待确认是否覆盖现有 <em class="hit">mock</em>。</p>
+              </div>
+              <time>2m</time>
+            </div>
+            <div class="s-res">
+              <span class="kind s">STP</span>
+              <div class="body">
+                <strong>Generated new mock factories</strong>
+                <p>Prepared <em class="hit">mock</em> factories for API and clock dependencies.</p>
+              </div>
+              <time>10:21</time>
+            </div>
+            <div class="s-res">
+              <span class="kind m">MEM</span>
+              <div class="body">
+                <strong>Hook 接入备注</strong>
+                <p>覆盖 <em class="hit">mock</em> 时把确认提示推为 waiting_input。</p>
+              </div>
+              <time>Jun 14</time>
+            </div>
+            <div class="s-res">
+              <span class="kind s">STP</span>
+              <div class="body">
+                <strong>Confirm overwrite existing mocks</strong>
+                <p>The agent wants to replace existing test doubles.</p>
+              </div>
+              <time>10:31</time>
+            </div>
+          </div>
+          <div class="tabbar">
+            <div><b>▦</b>Agents</div>
+            <div><b>※</b>History</div>
+            <div class="active"><b>⌕</b>Search</div>
+            <div><b>⚙</b>Settings</div>
+          </div>
+        </div></div>
+      </article>
+
+      <!-- ─── 06 SETTINGS ─── -->
+      <article class="screen-block" id="b-settings">
+        <div class="screen-meta">
+          <div class="crumbs"><span class="id">[06 / OK]</span><span class="ts">control · local-first</span></div>
+          <h2>Settings, <span class="serif">tactical</span></h2>
+          <p>多服务器、stale 阈值、Time Sensitive、隐私边界、接入向导一处看完。</p>
+        </div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
+          <div class="console-hd">
+            <div class="crumbs"><span>SYS</span><span class="div">/</span><span class="seg">SETTINGS</span></div>
+            <div class="row">
+              <h3>Settings</h3>
+              <div class="ic-btn">+</div>
+            </div>
+          </div>
+          <div class="content">
+            <div class="seg-hd"><h5>Servers</h5><span>02 online</span></div>
+            <div class="s-row">
+              <div>
+                <strong>api.day.app</strong>
+                <p>Default · key synced · 320 pushes today</p>
+              </div>
+              <span class="val on">● online</span>
+            </div>
+            <div class="s-row">
+              <div>
+                <strong>barkmate.we2.xyz</strong>
+                <p>Worker · v0.3 passthrough</p>
+              </div>
+              <span class="val on">● online</span>
+            </div>
+
+            <div class="seg-hd"><h5>Agent behavior</h5><span>defaults</span></div>
+            <div class="s-row">
+              <div>
+                <strong>Stale timeout</strong>
+                <p>Running tasks become stale after this window.</p>
+              </div>
+              <span class="val">30 min</span>
+            </div>
+            <div class="s-row">
+              <div>
+                <strong>On-device summary</strong>
+                <p>Use Apple Intelligence when available.</p>
+              </div>
+              <span class="toggle on"></span>
+            </div>
+            <div class="s-row">
+              <div>
+                <strong>Time-Sensitive alerts</strong>
+                <p>wait · stuck · fail break quiet mode.</p>
+              </div>
+              <span class="toggle on"></span>
+            </div>
+
+            <div class="seg-hd"><h5>Privacy</h5><span>local</span></div>
+            <div class="s-row">
+              <div>
+                <strong>Analytics</strong>
+                <p>None. Summary prompts never leave iPhone.</p>
+              </div>
+              <span class="val dim">off</span>
+            </div>
+            <div class="s-row">
+              <div>
+                <strong>Setup guide</strong>
+                <p>接入向导 — curl template &amp; webhook 示例.</p>
+              </div>
+              <span class="val">open ›</span>
+            </div>
+          </div>
+          <div class="tabbar">
+            <div><b>▦</b>Agents</div>
+            <div><b>※</b>History</div>
+            <div><b>⌕</b>Search</div>
+            <div class="active"><b>⚙</b>Settings</div>
+          </div>
+        </div></div>
+      </article>
+
+      <!-- ─── 07 LIVE ACTIVITY ─── -->
+      <article class="screen-block" id="b-live">
+        <div class="screen-meta">
+          <div class="crumbs"><span class="id">[07 / v1.1]</span><span class="ts">live activity · concept</span></div>
+          <h2>Live <span class="serif">activity</span></h2>
+          <p>锁屏与 Dynamic Island。不提供 reply 按钮，只把 wait / stuck 推到玻璃上。</p>
+        </div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
+          <div class="lock">
+            <div>
+              <div class="island">
+                <i></i>
+                <span>TW · 04/07</span>
+                <b>[ WAIT ]</b>
+              </div>
+              <div class="clock">9:41</div>
+              <div class="date">Mon · June 15</div>
+            </div>
+            <div class="lock-card">
+              <span class="tag">[ WAITING INPUT · TASK-0420 ]</span>
+              <h4>test-<span class="serif">writer</span><br/>needs confirmation</h4>
+              <p>Confirm overwrite existing mocks · mock-coverage · 04 / 07 complete.</p>
+              <div class="bar"><i></i></div>
+              <div class="foot"><span>updated 2m ago</span><span>tap to open</span></div>
+            </div>
+          </div>
+        </div></div>
+      </article>
+
+    </section>
+  </main>
+</body>
+</html>
