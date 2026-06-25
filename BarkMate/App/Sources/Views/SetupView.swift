@@ -1,9 +1,10 @@
 //
 //  SetupView.swift
-//  BarkMate
+//  BarkAgent
 //
-//  V0.3 Phase 3.3 Setup tab。SetupHero + curl 模板卡 + FieldExplainer +
-//  旧 Bark 兼容说明。curl 模板暂硬编码,Phase 4 (CurlTemplateBuilder) 接当前 server。
+//  V0.4 Day 8 — Mission Control 重写。
+//  MCConsoleHeader + MCBanner + MCSetupHero + MCCodeBlock + MCFieldKey + 双按钮行。
+//  数据流(@Query Server / @Injected NotificationStatusStore / DemoPushInjector)保持不变。
 //
 
 import SwiftUI
@@ -25,40 +26,83 @@ struct SetupView: View {
     @Injected(\.sharedModelContainer) private var modelContainer: ModelContainer
     @Injected(\.notificationStatusStore) private var statusStore: NotificationStatusStore
 
+    @Environment(\.dismiss) private var dismiss
+
     @State private var copyConfirmed: Bool = false
     @State private var demoConfirmed: Bool = false
     @State private var status: NotificationStatus = .unknown
     @State private var navigateToServers: Bool = false
 
-    private var curlText: String {
-        let host = servers.first?.address.trimmingCharacters(in: .whitespaces) ?? "https://api.day.app"
+    /// Mock B 的 install.sh + per-agent fallback 模板。`BARK_KEY` 自动注入用户首个 server 的 key。
+    private var installText: String {
         let key = servers.first?.key.isEmpty == false ? servers.first!.key : "<key>"
         return """
-        curl -X POST "\(host.hasSuffix("/") ? host : host + "/")\(key)" \\
-          -d "group=backend-refactor" \\
-          -d "task_id=auth-migration-0420" \\
-          -d "agent_status=running" \\
-          -d "progress=3/8" \\
-          -d "title=Refactoring auth middleware"
+        # detects ~/.claude, ~/.codex, ~/.opencode and installs hooks
+        curl -fsSL "https://barkmate.app/install.sh" \\
+          | BARK_KEY=\(key) sh
+
+        # or for one specific agent
+        barkmate install --agent=claude --key=$BARK_KEY
+        # supported: claude · codex · opencode · custom
         """
     }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if let banner = bannerData {
-                    NotificationStatusBanner(data: banner, onAction: handleBannerAction)
+            VStack(alignment: .leading, spacing: 0) {
+                MCConsoleHeader(
+                    crumbs: ["SYS", "SETUP", "0001"],
+                    title: "First ",
+                    italicAccent: "push"
+                ) {
+                    MCIconButton("←") { dismiss() }
                 }
-                SetupHero()
-                curlCard
-                fieldsCard
-                legacyCard
+                .padding(.bottom, 14)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    if let banner = bannerData {
+                        MCBanner(
+                            tone: banner.tone,
+                            title: banner.title,
+                            detail: banner.detail,
+                            actionLabel: banner.actionLabel,
+                            action: handleBannerAction
+                        )
+                    }
+
+                    MCSetupHero(
+                        tag: "one-line install",
+                        title: "One script.\nEvery ",
+                        italicAccent: "agent",
+                        subtitle: "跑一遍这段脚本,它会用你的 device key 自动配好 Claude Code / Codex / OpenCode 的 hook,自建 agent 留一个通用 bark-push 命令兼容。"
+                    )
+
+                    MCSectionHeader("Install script", trailing: "copy & run")
+                    MCCodeBlock(installText, label: "$ shell")
+
+                    HStack(spacing: 8) {
+                        Button(copyConfirmed ? "Copied" : "Copy install", action: copyInstall)
+                            .buttonStyle(MCPrimaryButtonStyle())
+                            .frame(maxWidth: .infinity)
+                        Button(demoConfirmed ? "Sent ✓" : "Send test push", action: sendDemoPush)
+                            .buttonStyle(MCGhostButtonStyle())
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    MCSectionHeader("Hook integrations", trailing: "supported agents")
+                    MCFieldKey(entries: [
+                        .init(key: "claude", value: "~/.claude/settings.json · SessionStart + Stop + Notification"),
+                        .init(key: "codex", value: "~/.codex/hooks.toml · on_start + on_complete + on_block"),
+                        .init(key: "opencode", value: "~/.opencode/agents/*.yaml · event:* webhook"),
+                        .init(key: "custom", value: "/usr/local/bin/bark-push · POST agent_status/task_id/progress")
+                    ])
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .padding(18)
-            .padding(.bottom, 30)
         }
-        .background(MockScreenBackground())
-        .navigationTitle("Setup")
+        .mcScreenBackground()
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $navigateToServers) {
             ServerListView()
         }
@@ -70,27 +114,44 @@ struct SetupView: View {
         }
     }
 
-    private var bannerData: NotificationStatusBannerData? {
+    private struct BannerSpec {
+        let tone: MCBanner.Tone
+        let title: String
+        let detail: String?
+        let actionLabel: String?
+    }
+
+    private var bannerData: BannerSpec? {
         switch status.kind {
         case .ok, .unknown:
             return nil
         case .authorizationDenied:
-            return .init(
-                kind: .authorizationDenied,
-                detail: status.detail ?? "Open iOS Settings → BarkMate to allow notifications.",
+            return BannerSpec(
+                tone: .warning,
+                title: "Notifications are off",
+                detail: status.detail ?? "Open iOS Settings → BarkAgent to allow notifications.",
                 actionLabel: "Open"
             )
         case .apnsRegistrationFailed:
-            return .init(
-                kind: .apnsRegistrationFailed,
+            return BannerSpec(
+                tone: .alert,
+                title: "APNs registration failed",
                 detail: status.detail,
                 actionLabel: "Servers"
             )
         case .serverUnreachable:
-            return .init(
-                kind: .serverUnreachable,
+            return BannerSpec(
+                tone: .danger,
+                title: "Server unreachable",
                 detail: status.detail,
                 actionLabel: "Servers"
+            )
+        case .storageUnavailable:
+            return BannerSpec(
+                tone: .danger,
+                title: "Storage unavailable",
+                detail: status.detail ?? "BarkAgent could not open its shared storage. Reinstall the app to recover.",
+                actionLabel: "Help"
             )
         }
     }
@@ -105,61 +166,20 @@ struct SetupView: View {
             #endif
         case .apnsRegistrationFailed, .serverUnreachable:
             navigateToServers = true
+        case .storageUnavailable:
+            #if canImport(UIKit)
+            if let url = URL(string: "https://github.com/rtx3/BarkAgent#shared-storage-unavailable") {
+                UIApplication.shared.open(url)
+            }
+            #endif
         default:
             break
         }
     }
 
-    private var curlCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Pill("curl template")
-            Text(curlText)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color(red: 0.92, green: 0.94, blue: 0.91))
-                .lineSpacing(3)
-                .padding(13)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(BarkTheme.Palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .textSelection(.enabled)
-
-            HStack(spacing: 10) {
-                Button(copyConfirmed ? "Copied" : "Copy curl") { copyCurl() }
-                    .buttonStyle(PrimaryCapsuleButtonStyle())
-                Button(demoConfirmed ? "Sent ✓" : "Send demo push") {
-                    sendDemoPush()
-                }
-                .buttonStyle(SecondaryCapsuleButtonStyle())
-            }
-        }
-        .mockCardPadding()
-    }
-
-    private var fieldsCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("关键字段")
-                .font(.headline.weight(.heavy))
-            FieldExplainer(name: "group", value: "agent_id")
-            FieldExplainer(name: "task_id", value: "同一任务的聚合键")
-            FieldExplainer(name: "agent_status", value: "running / waiting_input / blocked / done / failed")
-            FieldExplainer(name: "progress", value: "3/7 或 45%")
-        }
-        .mockCardPadding()
-    }
-
-    private var legacyCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("旧 Bark 兼容")
-                .font(.headline.weight(.heavy))
-            Text("不带 agent_status 的推送会进入 History Timeline,不会污染 Active Agents。")
-                .font(.subheadline)
-                .foregroundStyle(BarkTheme.Palette.ink.opacity(0.62))
-        }
-        .mockCardPadding()
-    }
-
-    private func copyCurl() {
+    private func copyInstall() {
         #if canImport(UIKit)
-        UIPasteboard.general.string = curlText
+        UIPasteboard.general.string = installText
         #endif
         copyConfirmed = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -167,8 +187,7 @@ struct SetupView: View {
         }
     }
 
-    /// Setup tab 的本地 demo push:与 Dashboard toolbar bolt 共用 DemoPushInjector,
-    /// 让用户跑通"curl 之前先看 active 卡片"的体验,无需配置任何服务器。
+    /// Setup tab 的本地 demo push:与 Dashboard toolbar bolt 共用 DemoPushInjector。
     private func sendDemoPush() {
         DemoPushInjector.injectNextStep(into: modelContainer)
         DarwinNotification.post(.itemDidArrive)
@@ -176,23 +195,5 @@ struct SetupView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             demoConfirmed = false
         }
-    }
-}
-
-private struct SetupHero: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Pill("first push", dark: true)
-            Text("Send one push. Get one living card.")
-                .font(BarkTheme.Typography.heroSerif(size: 36))
-                .tracking(-2)
-                .foregroundStyle(.white)
-            Text("带上 agent_status 和 task_id,同一个任务会原地更新,而不是堆成消息流。")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white.opacity(0.66))
-                .lineSpacing(3)
-        }
-        .padding(18)
-        .heroBackground(decorationColor: BarkTheme.Palette.warningYellow.opacity(0.34))
     }
 }
