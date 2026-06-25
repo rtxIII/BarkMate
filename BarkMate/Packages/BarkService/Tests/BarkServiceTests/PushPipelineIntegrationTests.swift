@@ -113,10 +113,10 @@ final class PushPipelineIntegrationTests: XCTestCase {
         XCTAssertEqual(steps.count, 3, "every push appends a step")
     }
 
-    // MARK: - Memo path (legacy)
+    // MARK: - Inbox path (legacy)
 
     @MainActor
-    func testLegacyPushWithoutAgentStatusBecomesIncomingMemo() throws {
+    func testLegacyPushWithoutAgentStatusBecomesInboxItem() throws {
         let userInfo: [AnyHashable: Any] = [
             "aps": [
                 "alert": [
@@ -138,15 +138,14 @@ final class PushPipelineIntegrationTests: XCTestCase {
         guard case .archived(_, _, let kind) = outcome else {
             return XCTFail("expected archived, got \(outcome)")
         }
-        XCTAssertEqual(kind, .memo(.incoming))
+        XCTAssertEqual(kind, .inbox)
 
         let tasks = try container.mainContext.fetch(FetchDescriptor<AgentTask>())
         XCTAssertTrue(tasks.isEmpty, "legacy push must not create AgentTask")
-        let memos = try container.mainContext.fetch(FetchDescriptor<Memo>())
-        XCTAssertEqual(memos.count, 1)
-        XCTAssertEqual(memos.first?.source, .incoming)
-        XCTAssertEqual(memos.first?.title, "Old Bark")
-        XCTAssertEqual(memos.first?.body, "Hello from legacy client")
+        let items = try container.mainContext.fetch(FetchDescriptor<AgentInboxItem>())
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.title, "Old Bark")
+        XCTAssertEqual(items.first?.body, "Hello from legacy client")
     }
 
     // MARK: - Pending queue degrade
@@ -201,12 +200,12 @@ final class PushPipelineIntegrationTests: XCTestCase {
         XCTAssertTrue(decrypt.decryptionFailed)
         XCTAssertEqual(decrypt.originalCiphertext, "AAECAwQFBgcICQoLDA0ODw==")
         XCTAssertEqual(decrypt.originalIV, "1234567890abcdef")
-        XCTAssertEqual(kind, .memo(.incoming))
+        XCTAssertEqual(kind, .inbox)
 
-        let memos = try container.mainContext.fetch(FetchDescriptor<Memo>())
-        XCTAssertEqual(memos.count, 1)
-        XCTAssertEqual(memos.first?.body, "Decryption Failed")
-        XCTAssertNotNil(memos.first?.metadata, "ciphertext stashed for later recovery")
+        let items = try container.mainContext.fetch(FetchDescriptor<AgentInboxItem>())
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.body, "Decryption Failed")
+        XCTAssertNotNil(items.first?.metadata, "ciphertext stashed for later recovery")
     }
 
     // MARK: - Encrypted v0.3 success (Task C 替代验证)

@@ -14,7 +14,7 @@ final class ModelsTests: XCTestCase {
     override func setUpWithError() throws {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         container = try ModelContainer(
-            for: AgentTask.self, AgentStep.self, Memo.self,
+            for: AgentTask.self, AgentStep.self, AgentInboxItem.self,
             Resource.self, Server.self, CryptoConfig.self,
             configurations: config
         )
@@ -121,48 +121,40 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(try context.fetch(FetchDescriptor<AgentStep>()).count, 0)
     }
 
-    // MARK: - Memo
+    // MARK: - AgentInboxItem
 
     @MainActor
-    func testMemoManualSource() throws {
-        let context = container.mainContext
-        let memo = Memo(
-            source: .manual,
-            title: "note",
-            body: "hello #tag",
-            bodyType: .markdown,
-            tags: ["tag"]
-        )
-        context.insert(memo)
-        try context.save()
-
-        let fetched = try context.fetch(FetchDescriptor<Memo>())
-        XCTAssertEqual(fetched.first?.source, .manual)
-        XCTAssertEqual(fetched.first?.bodyType, .markdown)
-        XCTAssertEqual(fetched.first?.tags, ["tag"])
-    }
-
-    @MainActor
-    func testMemoIncomingSource() throws {
+    func testAgentInboxItemFromIncomingPush() throws {
         let context = container.mainContext
         let serverID = UUID()
-        let memo = Memo(
-            source: .incoming,
+        let item = AgentInboxItem(
             title: "Bark push",
             body: "from server",
             group: "alerts",
             sourceServerID: serverID
         )
-        context.insert(memo)
+        context.insert(item)
         try context.save()
 
-        // 用 sourceRaw 直接做谓词，验证 rawValue 序列化无误。
-        let predicate = #Predicate<Memo> { $0.sourceRaw == "incoming" }
-        let fetched = try context.fetch(FetchDescriptor<Memo>(predicate: predicate))
+        let fetched = try context.fetch(FetchDescriptor<AgentInboxItem>())
         XCTAssertEqual(fetched.count, 1)
-        XCTAssertEqual(fetched.first?.source, .incoming)
+        XCTAssertEqual(fetched.first?.title, "Bark push")
         XCTAssertEqual(fetched.first?.sourceServerID, serverID)
         XCTAssertEqual(fetched.first?.group, "alerts")
+    }
+
+    @MainActor
+    func testAgentInboxItemBodyTypeRoundTrip() throws {
+        let context = container.mainContext
+        let item = AgentInboxItem(
+            body: "hello",
+            bodyType: .markdown
+        )
+        context.insert(item)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<AgentInboxItem>())
+        XCTAssertEqual(fetched.first?.bodyType, .markdown)
     }
 
     // MARK: - Resource
@@ -197,22 +189,22 @@ final class ModelsTests: XCTestCase {
     }
 
     @MainActor
-    func testResourceAttachedToMemo() throws {
+    func testResourceAttachedToInboxItem() throws {
         let context = container.mainContext
-        let memo = Memo(source: .manual, body: "with photo")
+        let item = AgentInboxItem(body: "with photo")
         let resource = Resource(
             filename: "selfie.jpg",
             mimeType: "image/jpeg",
             localPath: "resources/selfie.jpg",
             size: 2048
         )
-        memo.resources = [resource]
-        context.insert(memo)
+        item.resources = [resource]
+        context.insert(item)
         try context.save()
 
         XCTAssertEqual(try context.fetch(FetchDescriptor<Resource>()).count, 1)
 
-        context.delete(memo)
+        context.delete(item)
         try context.save()
         XCTAssertEqual(try context.fetch(FetchDescriptor<Resource>()).count, 0)
     }
@@ -246,8 +238,8 @@ final class ModelsTests: XCTestCase {
             serverID: server.id,
             algorithm: .aes256,
             mode: .cbc,
-            keychainKeyRef: "barkmate.crypto.\(server.id).key",
-            keychainIVRef: "barkmate.crypto.\(server.id).iv"
+            keychainKeyRef: "barkagent.crypto.\(server.id).key",
+            keychainIVRef: "barkagent.crypto.\(server.id).iv"
         )
         context.insert(crypto)
         try context.save()

@@ -20,7 +20,7 @@ final class SharedModelContainerTests: XCTestCase {
 
     override func setUpWithError() throws {
         let tmpDir = FileManager.default.temporaryDirectory
-            .appending(path: "BarkMateTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+            .appending(path: "BarkAgentTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
         storeURL = tmpDir.appending(path: "store.sqlite")
     }
@@ -89,14 +89,14 @@ final class SharedModelContainerTests: XCTestCase {
         XCTAssertEqual(steps.count, 1)
     }
 
-    /// 模拟 Share Extension 写入 manual Memo + NSE 写入 incoming Memo，主 App 能区分两种来源。
+    /// NSE 多次写入 incoming AgentInboxItem 后,主 App 重启能完整读到所有条目。
     @MainActor
-    func testManualAndIncomingMemosCoexist() throws {
+    func testMultiWriterInboxItemsCoexist() throws {
         try autoreleasepool {
             let containerA = try SharedModelContainer.make(storeURL: storeURL)
             for index in 0..<5 {
                 containerA.mainContext.insert(
-                    Memo(source: .manual, body: "manual-\(index)")
+                    AgentInboxItem(body: "first-batch-\(index)", group: "build")
                 )
             }
             try containerA.mainContext.save()
@@ -106,22 +106,22 @@ final class SharedModelContainerTests: XCTestCase {
             let containerB = try SharedModelContainer.make(storeURL: storeURL)
             for index in 0..<5 {
                 containerB.mainContext.insert(
-                    Memo(source: .incoming, body: "incoming-\(index)", group: "alerts", sourceServerID: UUID())
+                    AgentInboxItem(body: "second-batch-\(index)", group: "alerts", sourceServerID: UUID())
                 )
             }
             try containerB.mainContext.save()
         }
 
         let reader = try SharedModelContainer.make(storeURL: storeURL)
-        let all = try reader.mainContext.fetch(FetchDescriptor<Memo>())
+        let all = try reader.mainContext.fetch(FetchDescriptor<AgentInboxItem>())
         XCTAssertEqual(all.count, 10)
 
-        let manualPredicate = #Predicate<Memo> { $0.sourceRaw == "manual" }
-        let manual = try reader.mainContext.fetch(FetchDescriptor<Memo>(predicate: manualPredicate))
-        XCTAssertEqual(manual.count, 5)
+        let buildPredicate = #Predicate<AgentInboxItem> { $0.group == "build" }
+        let buildItems = try reader.mainContext.fetch(FetchDescriptor<AgentInboxItem>(predicate: buildPredicate))
+        XCTAssertEqual(buildItems.count, 5)
 
-        let incomingPredicate = #Predicate<Memo> { $0.sourceRaw == "incoming" }
-        let incoming = try reader.mainContext.fetch(FetchDescriptor<Memo>(predicate: incomingPredicate))
-        XCTAssertEqual(incoming.count, 5)
+        let alertsPredicate = #Predicate<AgentInboxItem> { $0.group == "alerts" }
+        let alerts = try reader.mainContext.fetch(FetchDescriptor<AgentInboxItem>(predicate: alertsPredicate))
+        XCTAssertEqual(alerts.count, 5)
     }
 }

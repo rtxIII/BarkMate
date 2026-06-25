@@ -3,7 +3,7 @@
 //  BarkService
 //
 //  字符串 → 稳定 UUID。供 PushParser 的 id fallback 与 PushArchiver 的
-//  AgentStep / Memo 幂等去重共享,保证同一 push 内容跨 NSE 调用产生同一 UUID。
+//  AgentStep / AgentInboxItem 幂等去重共享,保证同一 push 内容跨 NSE 调用产生同一 UUID。
 //
 //  算法:SHA256 取前 16 字节,设置 RFC 4122 version 4 + variant 标志位。
 //

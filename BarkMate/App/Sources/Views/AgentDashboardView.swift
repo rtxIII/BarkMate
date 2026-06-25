@@ -1,13 +1,12 @@
 //
 //  AgentDashboardView.swift
-//  BarkMate
+//  BarkAgent
 //
-//  V0.3 Phase 3.1 Agents tab。
-//  AgentHeroCard (深色) + FilterStrip + LazyVGrid(2 列 AgentTaskCard) +
-//  Demo push / Reconcile stale 按钮 + 底部 3 条 mini history。
-//  Phase 3.1.5/3.1.6: Demo push 通过 PushArchiver 注入一条 v0.3 mock 推送
-//  (toolbar bolt + 主区按钮共享同一动作),验证 NSE → SwiftData → @Query
-//  闭环不依赖真实 APNs。
+//  V0.4 Day 5 — Mission Control 重写。
+//  布局换成 MCConsoleHeader + MCHeadsUpPanel + 三段 bucket(Needs you / Running / Settled)。
+//  数据流(@Query / @Injected / DemoPush / DarwinObserver)保持不变。
+//  FilterStrip / EmptyDashboardState 旧组件不再使用,因为 bucket 分组替代了 filter,
+//  empty 状态走 needsYou+running+settled 总数为 0 的判定。
 //
 
 import SwiftUI
@@ -22,7 +21,6 @@ struct AgentDashboardView: View {
 
     @State private var refreshToken: Int = 0
     @State private var darwinObserver: DarwinObserver?
-    @State private var selectedFilter: DashboardFilter = .all
 
     @Injected(\.pendingQueueDrainer) private var pendingQueueDrainer: PendingQueueDrainer
     @Injected(\.sharedModelContainer) private var modelContainer: ModelContainer
@@ -30,23 +28,13 @@ struct AgentDashboardView: View {
 
     var body: some View {
         DashboardContent(
-            filter: $selectedFilter,
             onRefresh: { await pendingQueueDrainer.drain() },
             onDemoPush: sendDemoPush,
-            onGoToSetup: { selectedTab.current = .setup }
+            onGoToSetup: { selectedTab.requestSetupGuide() }
         )
         .id(refreshToken)
-        .background(MockScreenBackground())
-        .navigationTitle("Agents")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: sendDemoPush) {
-                    Image(systemName: "bolt.badge.clock")
-                }
-                .accessibilityLabel("Send demo push")
-            }
-        }
+        .mcScreenBackground()
+        .toolbar(.hidden, for: .navigationBar)
         .onAppear { installDarwinObserver() }
         .onDisappear { darwinObserver = nil }
     }
@@ -78,13 +66,12 @@ private struct DashboardContent: View {
     private var tasks: [AgentTask]
 
     @Query(
-        filter: #Predicate<Memo> { $0.isArchived == false },
-        sort: \Memo.createdAt,
+        filter: #Predicate<AgentInboxItem> { $0.isArchived == false },
+        sort: \AgentInboxItem.createdAt,
         order: .reverse
     )
-    private var memos: [Memo]
+    private var inboxItems: [AgentInboxItem]
 
-    @Binding var filter: DashboardFilter
     let onRefresh: @Sendable () async -> Void
     let onDemoPush: () -> Void
     let onGoToSetup: () -> Void
@@ -95,9 +82,21 @@ private struct DashboardContent: View {
             .sorted(by: prioritySort)
     }
 
-    private var filteredTasks: [AgentCardData] {
+    private var needsYouTasks: [AgentCardData] {
         activeTasks
-            .filter { filter.matches($0.status) }
+            .filter { $0.status.mcBucket == .needsYou }
+            .map(AgentCardData.fromTask)
+    }
+
+    private var runningTasks: [AgentCardData] {
+        activeTasks
+            .filter { $0.status.mcBucket == .running }
+            .map(AgentCardData.fromTask)
+    }
+
+    private var settledTasks: [AgentCardData] {
+        tasks
+            .filter { !$0.isArchived && $0.status == .done }
             .map(AgentCardData.fromTask)
     }
 
@@ -117,67 +116,225 @@ private struct DashboardContent: View {
         let terminalTasks = tasks
             .filter { $0.status.isTerminal || $0.isArchived }
             .map(HistoryItemData.fromTask)
-        let memoItems = memos.map(HistoryItemData.fromMemo)
-        return (terminalTasks + memoItems)
+        let inboxRows = inboxItems.map(HistoryItemData.fromInboxItem)
+        return (terminalTasks + inboxRows)
             .sorted { $0.updatedAt > $1.updatedAt }
             .prefix(3)
             .map { $0 }
     }
 
+    private var isEmpty: Bool {
+        needsYouTasks.isEmpty && runningTasks.isEmpty && settledTasks.isEmpty
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
-                AgentHeroCard(counts: counts)
-                FilterStrip(selected: $filter)
-                SectionTitle("Active Agents", trailing: "\(filteredTasks.count) cards")
+            VStack(alignment: .leading, spacing: 0) {
+                MCConsoleHeader(
+                    crumbs: ["OPS", "TODAY", todayLabel],
+                    title: "",
+                    italicAccent: "Today."
+                ) {
+                    MCIconButton("⌁", action: onDemoPush)
+                }
+                .padding(.bottom, 14)
 
-                if filteredTasks.isEmpty {
-                    EmptyDashboardState(onGoToSetup: onGoToSetup)
-                } else {
-                    LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 12) {
-                        ForEach(filteredTasks) { data in
-                            NavigationLink {
-                                AgentDetailView(taskID: data.id)
-                            } label: {
-                                AgentTaskCard(data: data)
+                VStack(alignment: .leading, spacing: 0) {
+                    MCHeadsUpPanel(counts: counts)
+                        .padding(.bottom, 6)
+
+                    if isEmpty {
+                        emptyState
+                        emptyStateTips
+                    } else {
+                        bucketSections
+                    }
+
+                    if !historyPreview.isEmpty {
+                        MCSectionHeader("History", trailing: "incoming pushes")
+                        VStack(spacing: 0) {
+                            ForEach(historyPreview) { item in
+                                HistoryMiniRow(data: item, style: .missionControl)
                             }
-                            .buttonStyle(.plain)
-                            .contextMenu { agentContextMenu(for: data.id) }
                         }
                     }
                 }
-
-                HStack(spacing: 10) {
-                    Button {
-                        onDemoPush()
-                    } label: {
-                        Label("Demo push", systemImage: "bolt.fill")
-                    }
-                    .buttonStyle(PrimaryCapsuleButtonStyle())
-
-                    Button("Reconcile stale") { reconcileStale() }
-                        .buttonStyle(SecondaryCapsuleButtonStyle())
-                }
-
-                if !historyPreview.isEmpty {
-                    SectionTitle("History", trailing: "old Bark + memos")
-                    VStack(spacing: 10) {
-                        ForEach(historyPreview) { item in
-                            HistoryMiniRow(data: item)
-                        }
-                    }
-                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 10)
-            .padding(.bottom, 30)
         }
         .refreshable { await onRefresh() }
+    }
+
+    // MARK: - Bucket sections
+
+    @ViewBuilder
+    private var bucketSections: some View {
+        if !needsYouTasks.isEmpty {
+            MCSectionHeader("Needs you", trailing: cardsLabel(needsYouTasks.count))
+            VStack(spacing: 10) {
+                ForEach(needsYouTasks) { data in
+                    NavigationLink {
+                        AgentDetailView(taskID: data.id)
+                    } label: {
+                        MCAttentionCard(data: data)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { agentContextMenu(for: data.id) }
+                }
+            }
+        }
+
+        if !runningTasks.isEmpty {
+            MCSectionHeader("Running", trailing: agentsLabel(runningTasks.count))
+            VStack(spacing: 0) {
+                ForEach(runningTasks) { data in
+                    NavigationLink {
+                        AgentDetailView(taskID: data.id)
+                    } label: {
+                        MCRunCompactRow(data: data)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { agentContextMenu(for: data.id) }
+                }
+            }
+        }
+
+        if !settledTasks.isEmpty {
+            MCSectionHeader("Settled", trailing: countLabel(settledTasks.count))
+            VStack(spacing: 0) {
+                ForEach(settledTasks) { data in
+                    NavigationLink {
+                        AgentDetailView(taskID: data.id)
+                    } label: {
+                        MCRunCompactRow(data: data)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { agentContextMenu(for: data.id) }
+                }
+            }
+        }
+    }
+
+    // MARK: - Empty state
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("— NO AGENTS YET —")
+                .font(MissionControl.Font.jetBrainsMono(size: 10, weight: .bold))
+                .tracking(1.8)
+                .foregroundStyle(MissionControl.Color.inkSoft)
+            Text("Send one push. Get one living card.")
+                .font(MissionControl.Font.interTight(size: 22, weight: .heavy))
+                .tracking(-0.66)
+                .foregroundStyle(MissionControl.Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Open Settings → Setup guide for a curl template.")
+                .font(MissionControl.Font.jetBrainsMono(size: 11, weight: .regular))
+                .lineSpacing(4)
+                .foregroundStyle(MissionControl.Color.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            emptyStateActions
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MissionControl.Color.hull)
+        .overlay(
+            Rectangle()
+                .stroke(MissionControl.Color.rule, lineWidth: MissionControl.Border.hairline)
+        )
+        .padding(.vertical, 14)
+    }
+
+    private var emptyStateActions: some View {
+        HStack(spacing: 8) {
+            Button(action: onDemoPush) {
+                Text("Send demo push")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(MCPrimaryButtonStyle())
+
+            Button(action: onGoToSetup) {
+                Text("Setup guide")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(MCGhostButtonStyle())
+        }
+        .padding(.top, 6)
+    }
+
+    /// emptyState 下方的 tip section,用 mock B 风格的 "▸ TELEMETRY" 块
+    /// 填充原本空白的视口下半部,呈现真实数据进来后的预期形态。
+    private var emptyStateTips: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            MCSectionHeader("Telemetry", trailing: "live · 0 pkt")
+
+            VStack(alignment: .leading, spacing: 10) {
+                tipRow(code: "[ APNS ]", color: MissionControl.Color.cyan,
+                       title: "Awaiting first device token")
+                tipRow(code: "[ STORE ]", color: MissionControl.Color.lime,
+                       title: "SwiftData ready, schema v0.4 frozen")
+                tipRow(code: "[ HINT ]", color: MissionControl.Color.amber,
+                       title: "Send a curl with agent_status to spawn the first card")
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(MissionControl.Color.hull)
+            .overlay(
+                Rectangle()
+                    .stroke(MissionControl.Color.rule, lineWidth: MissionControl.Border.hairline)
+            )
+        }
+        .padding(.top, 4)
+    }
+
+    private func tipRow(code: String, color: Color, title: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(code)
+                .font(MissionControl.Font.jetBrainsMono(size: 9, weight: .bold))
+                .tracking(1.0)
+                .foregroundStyle(color)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .overlay(
+                    Rectangle()
+                        .stroke(color, lineWidth: MissionControl.Border.hairline)
+                )
+            Text(title)
+                .font(MissionControl.Font.jetBrainsMono(size: 11, weight: .regular))
+                .lineSpacing(3)
+                .foregroundStyle(MissionControl.Color.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private var todayLabel: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE · MMdd"
+        return formatter.string(from: .now).uppercased()
+    }
+
+    private func cardsLabel(_ n: Int) -> String {
+        n < 10 ? "0\(n) cards" : "\(n) cards"
+    }
+
+    private func agentsLabel(_ n: Int) -> String {
+        n < 10 ? "0\(n) agents" : "\(n) agents"
+    }
+
+    private func countLabel(_ n: Int) -> String {
+        n < 10 ? "0\(n)" : "\(n)"
     }
 
     @ViewBuilder
     private func agentContextMenu(for id: UUID) -> some View {
         if let task = tasks.first(where: { $0.id == id }) {
+            ShareLink(item: AgentShareSnippet.text(from: AgentCardData.fromTask(task))) {
+                Label("Share status", systemImage: "square.and.arrow.up")
+            }
             Button(task.isPinned ? "Unpin" : "Pin") { togglePin(task) }
             Button(task.isMuted ? "Unmute" : "Mute") { toggleMute(task) }
             Button("Mark Done") { markDone(task) }
@@ -186,8 +343,6 @@ private struct DashboardContent: View {
     }
 
     /// Mock 契约 prioritySort:pinned → status.sortPriority → 字典序 displayName。
-    /// (与 AgentMockPrototypeView.MockAgentTask.prioritySort 对齐;不再用 updatedAt
-    /// 作为 tiebreak,以保证视觉位置稳定。)
     private func prioritySort(_ lhs: AgentTask, _ rhs: AgentTask) -> Bool {
         if lhs.isPinned != rhs.isPinned { return lhs.isPinned && !rhs.isPinned }
         if lhs.status.sortPriority != rhs.status.sortPriority {
@@ -219,88 +374,45 @@ private struct DashboardContent: View {
         task.updatedAt = .now
         try? modelContext.save()
     }
+}
 
-    private func reconcileStale() {
-        let threshold: TimeInterval = 30 * 60
-        let now = Date.now
-        for task in tasks where task.status == .running && !task.isArchived {
-            if now.timeIntervalSince(task.updatedAt) > threshold {
-                task.status = .stale
-            }
-        }
-        try? modelContext.save()
+// MARK: - MC button styles (本屏内联;P5/P6 可能也用到,后续视情况下沉)
+
+struct MCPrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(MissionControl.Font.jetBrainsMono(size: 10, weight: .bold))
+            .tracking(1.3)
+            .textCase(.uppercase)
+            .foregroundStyle(MissionControl.Color.void)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(configuration.isPressed
+                        ? MissionControl.Color.amber.opacity(0.8)
+                        : MissionControl.Color.amber)
+            .overlay(
+                Rectangle()
+                    .stroke(MissionControl.Color.amber, lineWidth: 1)
+            )
     }
 }
 
-// MARK: - FilterStrip
-
-private struct FilterStrip: View {
-    @Binding var selected: DashboardFilter
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(DashboardFilter.allCases) { filter in
-                    Button(filter.title) { selected = filter }
-                        .buttonStyle(ChipButtonStyle(isSelected: selected == filter))
-                }
-            }
-        }
-    }
-}
-
-enum DashboardFilter: String, Identifiable, CaseIterable {
-    case all
-    case attention
-    case running
-    case blocked
-    case done
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all: return "All"
-        case .attention: return "Needs attention"
-        case .running: return "Running"
-        case .blocked: return "Blocked"
-        case .done: return "Done"
-        }
-    }
-
-    func matches(_ status: AgentStatus) -> Bool {
-        switch self {
-        case .all: return true
-        case .attention: return [.waitingInput, .blocked, .failed].contains(status)
-        case .running: return status == .running
-        case .blocked: return status == .blocked
-        case .done: return status == .done
-        }
-    }
-}
-
-// MARK: - Empty
-
-private struct EmptyDashboardState: View {
-    let onGoToSetup: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Pill("first push", dark: true)
-            Text("Send one push. Get one living card.")
-                .font(BarkTheme.Typography.heroSerif(size: 28))
-                .tracking(-1)
-                .foregroundStyle(.white)
-            Text("Setup tab 里有 curl 模板,带上 agent_status + task_id 即可。")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white.opacity(0.66))
-                .lineSpacing(3)
-            Button("Open Setup tab", action: onGoToSetup)
-                .buttonStyle(PrimaryCapsuleButtonStyle())
-                .padding(.top, 4)
-        }
-        .padding(18)
-        .heroBackground(decorationColor: BarkTheme.Palette.warningYellow.opacity(0.34))
+struct MCGhostButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(MissionControl.Font.jetBrainsMono(size: 10, weight: .bold))
+            .tracking(1.3)
+            .textCase(.uppercase)
+            .foregroundStyle(configuration.isPressed
+                             ? MissionControl.Color.amber
+                             : MissionControl.Color.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(MissionControl.Color.hull)
+            .overlay(
+                Rectangle()
+                    .stroke(MissionControl.Color.ruleHot, lineWidth: 1)
+            )
     }
 }
 
@@ -374,14 +486,14 @@ extension HistoryItemData {
         )
     }
 
-    static func fromMemo(_ memo: Memo) -> HistoryItemData {
+    static func fromInboxItem(_ item: AgentInboxItem) -> HistoryItemData {
         HistoryItemData(
-            id: memo.id,
-            kind: memo.source == .incoming ? .incoming : .memo,
-            kindBadge: memo.source == .incoming ? "incoming" : "memo",
-            title: memo.title ?? (memo.source == .incoming ? "Push" : "Memo"),
-            body: memo.body,
-            updatedAt: memo.updatedAt
+            id: item.id,
+            kind: .incoming,
+            kindBadge: "BARK",
+            title: item.title ?? "Push",
+            body: item.body,
+            updatedAt: item.updatedAt
         )
     }
 }

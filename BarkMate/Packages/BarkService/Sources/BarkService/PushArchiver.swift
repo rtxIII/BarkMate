@@ -2,12 +2,12 @@
 //  PushArchiver.swift
 //  BarkService
 //
-//  ParsedPush → SwiftData AgentTask/AgentStep/Memo 入库。
+//  ParsedPush → SwiftData AgentTask/AgentStep/AgentInboxItem 入库。
 //  身处 Extension 24MB 内存约束下：
 //    - 使用临时 ModelContext（不复用 mainContext）
 //    - 短事务、立即 save
 //    - Agent 路径按 aggregateKey upsert task，每次推送新增 step
-//    - Message 路径按 parsed.id 幂等写 incoming Memo
+//    - Inbox 路径按 parsed.id 幂等写入 AgentInboxItem（旧 Bark 协议落点）
 //
 
 import Foundation
@@ -22,30 +22,27 @@ public struct PushArchiver {
         self.modelContainer = modelContainer
     }
 
-    /// 将 ParsedPush 落库为 AgentTask/AgentStep 或 Memo。
-    /// 返回 AgentTask.id 或 Memo.id（UUID）。
+    /// 将 ParsedPush 落库为 AgentTask/AgentStep 或 AgentInboxItem。
+    /// 返回 AgentTask.id 或 AgentInboxItem.id（UUID）。
     ///
     /// - Parameters:
-    ///   - parsed: 解析后的 push/share 内容
-    ///   - type: 兼容旧 API；推送默认 `.push`，Share Extension 传 `.memo`
-    ///   - degradation: 解密失败时传入，密文/IV 会序列化到 `Memo.metadata`
+    ///   - parsed: 解析后的 push 内容
+    ///   - degradation: 解密失败时传入，密文/IV 会序列化到 `AgentInboxItem.metadata`
     ///     便于后续手动解密恢复（2.12 降级策略）。
     @discardableResult
     public func archive(
         _ parsed: ParsedPush,
-        fallbackMemoSource: MemoSource = .incoming,
         degradation: DecryptProcessor.DecryptResult? = nil
     ) throws -> UUID {
         let context = ModelContext(modelContainer)
         context.autosaveEnabled = false
 
-        switch AgentRouter.route(parsed, memoSource: fallbackMemoSource) {
+        switch AgentRouter.route(parsed) {
         case .agent(let route):
             return try upsertAgentTask(parsed, route: route, context: context)
-        case .memo(let source):
-            return try archiveMemo(
+        case .inbox:
+            return try archiveInboxItem(
                 parsed,
-                source: source,
                 degradation: degradation,
                 context: context
             )
@@ -117,24 +114,21 @@ public struct PushArchiver {
         return task.id
     }
 
-    private func archiveMemo(
+    private func archiveInboxItem(
         _ parsed: ParsedPush,
-        source: MemoSource,
         degradation: DecryptProcessor.DecryptResult?,
         context: ModelContext
     ) throws -> UUID {
         let uuid = UUID(uuidString: parsed.id) ?? deterministicUUID(from: parsed.id)
-        let predicate = #Predicate<Memo> { $0.id == uuid }
-        let existing = try context.fetch(FetchDescriptor<Memo>(predicate: predicate)).first
+        let predicate = #Predicate<AgentInboxItem> { $0.id == uuid }
+        let existing = try context.fetch(FetchDescriptor<AgentInboxItem>(predicate: predicate)).first
 
         let metadata = encodeDegradationMetadata(degradation)
 
         if let existing {
-            existing.source = source
             existing.title = parsed.title
             existing.body = parsed.body
             existing.bodyType = parsed.bodyType
-            existing.tags = parsed.tags
             existing.group = parsed.group
             existing.url = parsed.url
             existing.imageURL = parsed.imageURL
@@ -145,13 +139,11 @@ public struct PushArchiver {
             return existing.id
         }
 
-        let memo = Memo(
+        let item = AgentInboxItem(
             id: uuid,
-            source: source,
             title: parsed.title,
             body: parsed.body,
             bodyType: parsed.bodyType,
-            tags: parsed.tags,
             group: parsed.group,
             sourceServerID: parsed.sourceServerID,
             url: parsed.url,
@@ -160,9 +152,9 @@ public struct PushArchiver {
             createdAt: parsed.createdAt,
             updatedAt: parsed.createdAt
         )
-        context.insert(memo)
+        context.insert(item)
         try context.save()
-        return memo.id
+        return item.id
     }
 
     private func encodeDegradationMetadata(

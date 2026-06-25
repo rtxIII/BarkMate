@@ -13,7 +13,6 @@ final class SearchEngineTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
     private let t1 = Date(timeIntervalSince1970: 1_700_001_000)
     private let t2 = Date(timeIntervalSince1970: 1_700_002_000)
-    private let t3 = Date(timeIntervalSince1970: 1_700_003_000)
     private let t4 = Date(timeIntervalSince1970: 1_700_004_000)
 
     override func setUpWithError() throws {
@@ -29,12 +28,11 @@ final class SearchEngineTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    /// 5 条 fixture：
+    /// 4 条 fixture：
     /// - taskA (ci/build-1, running, "Deploy v1") @ t0
     /// - step1 (taskA, "started compile", body "compile src/...") @ t1
     /// - taskB (monitoring/_, blocked, "CPU 高 alert") @ t2
-    /// - memoMeeting (manual, title "Meeting notes", body "discuss roadmap", tags [work]) @ t3
-    /// - memoIncoming (incoming, group "legacy", body "TODO refactor #work") @ t4
+    /// - inboxIncoming (group "legacy", body "TODO refactor auth") @ t4
     private func seed() throws {
         let taskA = AgentTask(
             aggregateKey: AgentTask.aggregateKey(agentID: "ci", taskID: "build-1"),
@@ -68,25 +66,14 @@ final class SearchEngineTests: XCTestCase {
         )
         context.insert(taskB)
 
-        let memoMeeting = Memo(
-            source: .manual,
-            title: "Meeting notes",
-            body: "discuss roadmap",
-            tags: ["work"],
-            createdAt: t3,
-            updatedAt: t3
-        )
-        context.insert(memoMeeting)
-
-        let memoIncoming = Memo(
-            source: .incoming,
-            body: "TODO refactor auth #work",
-            tags: ["work", "refactor"],
+        let inboxIncoming = AgentInboxItem(
+            title: "Legacy push",
+            body: "TODO refactor auth",
             group: "legacy",
             createdAt: t4,
             updatedAt: t4
         )
-        context.insert(memoIncoming)
+        context.insert(inboxIncoming)
 
         try context.save()
     }
@@ -95,10 +82,9 @@ final class SearchEngineTests: XCTestCase {
 
     func testEmptyQueryReturnsAllAcrossScopes() throws {
         let results = try SearchEngine.search(SearchQuery(), in: context)
-        // 2 tasks + 1 step (taskA 命中后 step 被去重) + 2 memos = ?
-        // 注意：空 query 下 task 全部命中，step 因所属 taskA 已命中被去重
-        XCTAssertEqual(results.count, 4)
-        XCTAssertEqual(results.first?.updatedAt, t4) // memoIncoming 最新
+        // 2 tasks + 1 step (taskA 命中后 step 被去重) + 1 inbox = 3
+        XCTAssertEqual(results.count, 3)
+        XCTAssertEqual(results.first?.updatedAt, t4) // inboxIncoming 最新
     }
 
     func testEmptyQueryWithScopeStepsOnly() throws {
@@ -126,13 +112,13 @@ final class SearchEngineTests: XCTestCase {
         }
     }
 
-    func testTextHitsMemoBody() throws {
-        let results = try SearchEngine.search(SearchQuery(text: "roadmap"), in: context)
+    func testTextHitsInboxBody() throws {
+        let results = try SearchEngine.search(SearchQuery(text: "refactor"), in: context)
         XCTAssertEqual(results.count, 1)
-        if case .memo(let memo) = results.first {
-            XCTAssertEqual(memo.title, "Meeting notes")
+        if case .inbox(let item) = results.first {
+            XCTAssertEqual(item.title, "Legacy push")
         } else {
-            XCTFail("expected memo result")
+            XCTFail("expected inbox result")
         }
     }
 
@@ -188,7 +174,7 @@ final class SearchEngineTests: XCTestCase {
         })
     }
 
-    // MARK: - Status filter (Phase 4.11)
+    // MARK: - Status filter
 
     func testStatusFilterBlockedReturnsTaskAndSubsetSteps() throws {
         // fixtures: taskA=running, taskB=blocked → 仅 taskB 命中 agent; step1=running 被排除。
@@ -203,56 +189,35 @@ final class SearchEngineTests: XCTestCase {
         XCTAssertEqual(task.status, .blocked)
     }
 
-    func testStatusFilterExcludesMemos() throws {
-        // statuses 非空 → memos 整表排除(它们无 status 概念)。
+    func testStatusFilterExcludesInbox() throws {
+        // statuses 非空 → inbox 整表排除(它们无 status 概念)。
         let results = try SearchEngine.search(
             SearchQuery(scope: .all, statuses: [.running]),
             in: context
         )
         XCTAssertTrue(results.allSatisfy {
-            if case .memo = $0 { return false } else { return true }
+            if case .inbox = $0 { return false } else { return true }
         })
     }
 
-    func testScopeMemosOnly() throws {
+    func testScopeInboxOnly() throws {
         let results = try SearchEngine.search(
-            SearchQuery(scope: .memos),
+            SearchQuery(scope: .inbox),
             in: context
         )
-        XCTAssertEqual(results.count, 2)
+        XCTAssertEqual(results.count, 1)
         XCTAssertTrue(results.allSatisfy {
-            if case .memo = $0 { return true } else { return false }
+            if case .inbox = $0 { return true } else { return false }
         })
     }
 
     func testScopeCombination() throws {
         let results = try SearchEngine.search(
-            SearchQuery(scope: [.agents, .memos]),
+            SearchQuery(scope: [.agents, .inbox]),
             in: context
         )
-        XCTAssertEqual(results.count, 4)
-    }
-
-    // MARK: - Tag filter
-
-    func testTagFilterAppliesOnlyToMemos() throws {
-        let results = try SearchEngine.search(
-            SearchQuery(tags: ["work"]),
-            in: context
-        )
-        // 仅 Memo 命中，AgentTask / AgentStep 因无 tags 字段被跳过
-        XCTAssertEqual(results.count, 2)
-        XCTAssertTrue(results.allSatisfy {
-            if case .memo = $0 { return true } else { return false }
-        })
-    }
-
-    func testTagFilterNoMatch() throws {
-        let results = try SearchEngine.search(
-            SearchQuery(tags: ["nonexistent"]),
-            in: context
-        )
-        XCTAssertEqual(results.count, 0)
+        // 2 tasks + 1 inbox
+        XCTAssertEqual(results.count, 3)
     }
 
     // MARK: - AgentID filter
@@ -271,33 +236,31 @@ final class SearchEngineTests: XCTestCase {
         }
     }
 
-    func testAgentIDFilterMatchesMemoGroup() throws {
+    func testAgentIDFilterMatchesInboxGroup() throws {
         let results = try SearchEngine.search(
             SearchQuery(agentIDs: ["legacy"]),
             in: context
         )
         XCTAssertEqual(results.count, 1)
-        if case .memo(let memo) = results.first {
-            XCTAssertEqual(memo.group, "legacy")
+        if case .inbox(let item) = results.first {
+            XCTAssertEqual(item.group, "legacy")
         } else {
-            XCTFail("expected memo with group=legacy")
+            XCTFail("expected inbox with group=legacy")
         }
     }
 
     // MARK: - Date range
 
     func testDateRangeFilter() throws {
-        // 仅命中 t2 (taskB) 和 t3 (memoMeeting)
+        // 仅命中 t2 (taskB)
         let from = Date(timeIntervalSince1970: 1_700_001_500)
         let to = Date(timeIntervalSince1970: 1_700_003_500)
         let results = try SearchEngine.search(
             SearchQuery(dateRange: from...to),
             in: context
         )
-        XCTAssertEqual(results.count, 2)
-        // 排序按 updatedAt DESC：memoMeeting(t3) 在前，taskB(t2) 在后
-        XCTAssertEqual(results[0].updatedAt, t3)
-        XCTAssertEqual(results[1].updatedAt, t2)
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].updatedAt, t2)
     }
 
     // MARK: - Archived
@@ -329,17 +292,6 @@ final class SearchEngineTests: XCTestCase {
         XCTAssertEqual(withArchived.count, 1)
     }
 
-    // MARK: - Combined
-
-    func testCombinedTextAndScope() throws {
-        let results = try SearchEngine.search(
-            SearchQuery(text: "work", scope: .memos),
-            in: context
-        )
-        // memoIncoming 的 body 含 "#work"，memoMeeting 的 tags 含 "work"
-        XCTAssertEqual(results.count, 2)
-    }
-
     // MARK: - Sorting & limit
 
     func testResultsSortedByUpdatedAtDESC() throws {
@@ -351,16 +303,15 @@ final class SearchEngineTests: XCTestCase {
     func testLimitTruncates() throws {
         let results = try SearchEngine.search(SearchQuery(), in: context, limit: 2)
         XCTAssertEqual(results.count, 2)
-        // 应保留最新的两条
+        // 应保留最新的两条:t4 (inboxIncoming) 和 t2 (taskB)
         XCTAssertEqual(results[0].updatedAt, t4)
-        XCTAssertEqual(results[1].updatedAt, t3)
+        XCTAssertEqual(results[1].updatedAt, t2)
     }
 
     // MARK: - Facets
 
     func testAvailableFacets() throws {
         let facets = try SearchEngine.availableFacets(in: context)
-        XCTAssertEqual(Set(facets.tags), ["work", "refactor"])
         XCTAssertEqual(Set(facets.agentIDs), ["ci", "monitoring", "legacy"])
     }
 }

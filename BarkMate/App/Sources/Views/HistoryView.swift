@@ -1,9 +1,10 @@
 //
 //  HistoryView.swift
-//  BarkMate
+//  BarkAgent
 //
-//  V0.3 Phase 3.4 History tab。归档 task + memo + 旧 Bark incoming 推送的回溯入口。
-//  HistoryHero(深色) + chip 过滤 + 全量 HistoryRow。
+//  V0.4 Day 7 — Mission Control 重写。
+//  MCConsoleHeader + MCChip filter + 按日期分组 MCSectionHeader + HistoryRow(MC)。
+//  数据流:archived AgentTask + incoming AgentInboxItem。
 //
 
 import SwiftUI
@@ -16,8 +17,8 @@ struct HistoryView: View {
     @Query(sort: \AgentTask.updatedAt, order: .reverse)
     private var tasks: [AgentTask]
 
-    @Query(sort: \Memo.createdAt, order: .reverse)
-    private var memos: [Memo]
+    @Query(sort: \AgentInboxItem.createdAt, order: .reverse)
+    private var inboxItems: [AgentInboxItem]
 
     @State private var filter: HistoryFilter = .all
 
@@ -25,98 +26,134 @@ struct HistoryView: View {
         let archivedTasks = tasks
             .filter { $0.status.isTerminal || $0.isArchived }
             .map(HistoryItemData.fromTask)
-        let allMemos = memos.map(HistoryItemData.fromMemo)
-        let merged = (archivedTasks + allMemos)
+        let inboxRows = inboxItems.map(HistoryItemData.fromInboxItem)
+        let merged = (archivedTasks + inboxRows)
             .filter(filter.matches)
             .sorted { $0.updatedAt > $1.updatedAt }
         return merged
     }
 
+    /// 按日期分组:Today / Yesterday / Earlier · MMM dd。
+    private var groupedItems: [(String, [HistoryItemData])] {
+        let calendar = Calendar.current
+        let groups = Dictionary(grouping: items) { item -> String in
+            if calendar.isDateInToday(item.updatedAt) {
+                return "Today"
+            } else if calendar.isDateInYesterday(item.updatedAt) {
+                return "Yesterday"
+            } else {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "'Earlier · 'MMM dd"
+                return formatter.string(from: item.updatedAt)
+            }
+        }
+        let order = ["Today", "Yesterday"]
+        return groups.sorted { lhs, rhs in
+            if order.contains(lhs.key) && order.contains(rhs.key) {
+                return order.firstIndex(of: lhs.key)! < order.firstIndex(of: rhs.key)!
+            }
+            if order.contains(lhs.key) { return true }
+            if order.contains(rhs.key) { return false }
+            return (lhs.value.first?.updatedAt ?? .distantPast) > (rhs.value.first?.updatedAt ?? .distantPast)
+        }
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                HistoryHero()
+            VStack(alignment: .leading, spacing: 0) {
+                MCConsoleHeader(
+                    crumbs: ["SYS", "HISTORY", monthLabel],
+                    title: "History"
+                )
+                .padding(.bottom, 14)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(HistoryFilter.allCases) { f in
-                            Button(f.title) { filter = f }
-                                .buttonStyle(ChipButtonStyle(isSelected: filter == f))
+                VStack(alignment: .leading, spacing: 0) {
+                    filterRow
+                        .padding(.bottom, 10)
+
+                    if items.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(groupedItems, id: \.0) { group in
+                            MCSectionHeader(group.0, trailing: itemsLabel(group.1.count))
+                            VStack(spacing: 0) {
+                                ForEach(group.1) { item in
+                                    HistoryRow(data: item, style: .missionControl)
+                                }
+                            }
                         }
                     }
                 }
-
-                if items.isEmpty {
-                    Text("History will appear once tasks finish or memos arrive.")
-                        .font(.subheadline)
-                        .foregroundStyle(BarkTheme.Palette.ink.opacity(0.58))
-                        .mockCardPadding()
-                } else {
-                    VStack(spacing: 10) {
-                        ForEach(items) { item in
-                            HistoryRow(data: item)
-                        }
-                    }
-                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .padding(18)
-            .padding(.bottom, 30)
         }
-        .background(MockScreenBackground())
-        .navigationTitle("History")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                NavigationLink {
-                    MemoEditorView()
-                } label: {
-                    Image(systemName: "plus")
+        .mcScreenBackground()
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var filterRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(HistoryFilter.allCases) { f in
+                    MCChip(f.title, isActive: filter == f) { filter = f }
                 }
-                .accessibilityLabel("New memo")
             }
         }
     }
-}
 
-private struct HistoryHero: View {
-    var body: some View {
+    private var emptyState: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Pill("timeline", dark: true)
-            Text("Messages become context, not noise.")
-                .font(BarkTheme.Typography.heroSerif(size: 34))
-                .tracking(-2)
-                .foregroundStyle(.white)
-            Text("旧协议推送、归档 task 和 memo 都在这里追溯。")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white.opacity(0.66))
+            Text("— EMPTY TIMELINE —")
+                .font(MissionControl.Font.jetBrainsMono(size: 10, weight: .bold))
+                .tracking(1.8)
+                .foregroundStyle(MissionControl.Color.inkSoft)
+            Text("History fills in once tasks finish or pushes arrive.")
+                .font(MissionControl.Font.jetBrainsMono(size: 11, weight: .regular))
+                .lineSpacing(4)
+                .foregroundStyle(MissionControl.Color.inkSoft)
         }
-        .padding(18)
-        .heroBackground(decorationColor: BarkTheme.Palette.infoCyan.opacity(0.30))
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MissionControl.Color.hull)
+        .overlay(
+            Rectangle()
+                .stroke(MissionControl.Color.rule, lineWidth: MissionControl.Border.hairline)
+        )
+        .padding(.vertical, 14)
+    }
+
+    private var monthLabel: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM · yyyy"
+        return formatter.string(from: .now).uppercased()
+    }
+
+    private func itemsLabel(_ n: Int) -> String {
+        n < 10 ? "0\(n) items" : "\(n) items"
     }
 }
 
 private enum HistoryFilter: String, Identifiable, CaseIterable {
     case all
-    case agents
+    case archived
     case incoming
-    case memos
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .all: return "All"
-        case .agents: return "Archived agents"
+        case .archived: return "Archived"
         case .incoming: return "Incoming"
-        case .memos: return "Memos"
         }
     }
 
     func matches(_ item: HistoryItemData) -> Bool {
         switch self {
         case .all: return true
-        case .agents: return item.kind == .agent
+        case .archived: return item.kind == .agent
         case .incoming: return item.kind == .incoming
-        case .memos: return item.kind == .memo
         }
     }
 }

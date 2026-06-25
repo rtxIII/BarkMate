@@ -8,7 +8,7 @@ import SwiftData
 
 /// 附件资源（图片、文件等）。
 ///
-/// 归属 `step` 或 `memo` 二选一（业务约束，schema 上仍是两个独立可空关系）。
+/// 归属 `step` 或 `inboxItem` 二选一（业务约束，schema 上仍是两个独立可空关系）。
 @Model
 public final class Resource {
     @Attribute(.unique) public var id: UUID
@@ -20,7 +20,7 @@ public final class Resource {
     public var createdAt: Date
 
     public var step: AgentStep?
-    public var memo: Memo?
+    public var inboxItem: AgentInboxItem?
 
     public init(
         id: UUID = UUID(),
@@ -30,7 +30,7 @@ public final class Resource {
         size: Int64,
         createdAt: Date = .now,
         step: AgentStep? = nil,
-        memo: Memo? = nil
+        inboxItem: AgentInboxItem? = nil
     ) {
         self.id = id
         self.filename = filename
@@ -39,6 +39,6 @@ public final class Resource {
         self.size = size
         self.createdAt = createdAt
         self.step = step
-        self.memo = memo
+        self.inboxItem = inboxItem
     }
 }

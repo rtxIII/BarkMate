@@ -15,13 +15,6 @@ public enum AgentStatus: String, Codable, Sendable, CaseIterable {
     case stale
 }
 
-public enum MemoSource: String, Codable, Sendable, CaseIterable {
-    /// 用户手写 / Share Extension。
-    case manual
-    /// 旧 Bark 协议推送（无 agent_status 字段）—— 落入 Memo 表。
-    case incoming
-}
-
 public enum BodyType: String, Codable, Sendable, CaseIterable {
     case plainText
     case markdown

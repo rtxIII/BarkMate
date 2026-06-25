@@ -12,7 +12,7 @@ final class PushArchiverTests: XCTestCase {
 
     override func setUpWithError() throws {
         let tmpDir = FileManager.default.temporaryDirectory
-            .appending(path: "BarkMateTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+            .appending(path: "BarkAgentTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
         storeURL = tmpDir.appending(path: "store.sqlite")
         container = try SharedModelContainer.make(storeURL: storeURL)
@@ -90,20 +90,19 @@ final class PushArchiverTests: XCTestCase {
     }
 
     @MainActor
-    func testOldProtocolPushArchivesIncomingMemoByID() throws {
+    func testOldProtocolPushArchivesInboxItemByID() throws {
         let parsed = ParsedPush(id: "arbitrary-string", body: "x")
         try archiver.archive(parsed)
 
-        let memos = try container.mainContext.fetch(FetchDescriptor<Memo>())
-        XCTAssertEqual(memos.count, 1)
-        XCTAssertEqual(memos.first?.source, .incoming)
-        XCTAssertEqual(memos.first?.body, "x")
+        let items = try container.mainContext.fetch(FetchDescriptor<AgentInboxItem>())
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.body, "x")
 
         // Idempotent on second call
         try archiver.archive(ParsedPush(id: "arbitrary-string", body: "y"))
-        let memos2 = try container.mainContext.fetch(FetchDescriptor<Memo>())
-        XCTAssertEqual(memos2.count, 1)
-        XCTAssertEqual(memos2.first?.body, "y")
+        let items2 = try container.mainContext.fetch(FetchDescriptor<AgentInboxItem>())
+        XCTAssertEqual(items2.count, 1)
+        XCTAssertEqual(items2.first?.body, "y")
     }
 
     @MainActor
@@ -128,14 +127,4 @@ final class PushArchiverTests: XCTestCase {
         XCTAssertEqual(tasks.first?.steps.count, 1)
     }
 
-    @MainActor
-    func testManualMemoArchiveUsesManualSource() throws {
-        let parsed = ParsedPush(id: UUID().uuidString, title: "note", body: "manual")
-        try archiver.archive(parsed, fallbackMemoSource: .manual)
-
-        let memos = try container.mainContext.fetch(FetchDescriptor<Memo>())
-        XCTAssertEqual(memos.count, 1)
-        XCTAssertEqual(memos.first?.source, .manual)
-        XCTAssertEqual(memos.first?.title, "note")
-    }
 }

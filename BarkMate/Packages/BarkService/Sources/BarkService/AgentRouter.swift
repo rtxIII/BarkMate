@@ -3,7 +3,7 @@
 //  BarkService
 //
 //  Decides whether a parsed Bark push belongs to the Agent Dashboard or the
-//  legacy-compatible History Timeline path.
+//  legacy History → Incoming inbox path (旧 Bark 协议无 agent_status 字段)。
 //
 
 import Foundation
@@ -11,7 +11,8 @@ import Models
 
 public enum AgentRoute: Sendable, Equatable {
     case agent(AgentRouteContext)
-    case memo(MemoSource)
+    /// 无 agent_status 字段 → 归入 AgentInboxItem，mock B 的 History → Incoming 段。
+    case inbox
 }
 
 public struct AgentRouteContext: Sendable, Equatable {
@@ -22,12 +23,9 @@ public struct AgentRouteContext: Sendable, Equatable {
 }
 
 public enum AgentRouter {
-    public static func route(
-        _ parsed: ParsedPush,
-        memoSource: MemoSource = .incoming
-    ) -> AgentRoute {
+    public static func route(_ parsed: ParsedPush) -> AgentRoute {
         guard let status = parsed.agentStatus else {
-            return .memo(memoSource)
+            return .inbox
         }
 
         let agentID = parsed.agentID
@@ -42,4 +40,3 @@ public enum AgentRouter {
         )
     }
 }
-

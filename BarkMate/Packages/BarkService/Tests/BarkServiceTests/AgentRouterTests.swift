@@ -4,26 +4,15 @@ import Models
 
 final class AgentRouterTests: XCTestCase {
 
-    // MARK: - Memo path
+    // MARK: - Inbox path
 
-    func testRouteWithoutAgentStatusGoesToIncomingMemo() {
+    func testRouteWithoutAgentStatusGoesToInbox() {
         let parsed = ParsedPush(id: "msg-1", body: "legacy push")
         let route = AgentRouter.route(parsed)
-        guard case .memo(let source) = route else {
-            XCTFail("expected memo route, got \(route)")
+        guard case .inbox = route else {
+            XCTFail("expected inbox route, got \(route)")
             return
         }
-        XCTAssertEqual(source, .incoming)
-    }
-
-    func testManualMemoSourceOverride() {
-        let parsed = ParsedPush(id: "msg-2", body: "share extension")
-        let route = AgentRouter.route(parsed, memoSource: .manual)
-        guard case .memo(let source) = route else {
-            XCTFail("expected memo route")
-            return
-        }
-        XCTAssertEqual(source, .manual)
     }
 
     // MARK: - Agent path
@@ -100,7 +89,7 @@ final class AgentRouterTests: XCTestCase {
 
     // MARK: - Parser→Router seam (invalid agent_status string)
 
-    func testInvalidAgentStatusStringFallsThroughToMemo() {
+    func testInvalidAgentStatusStringFallsThroughToInbox() {
         // PushParser 会把无法识别的 agent_status 字符串解析为 nil
         let userInfo: [AnyHashable: Any] = [
             "aps": ["alert": ["body": "x"]],
@@ -111,11 +100,10 @@ final class AgentRouterTests: XCTestCase {
         XCTAssertNil(parsed.agentStatus, "parser should drop invalid status string")
 
         let route = AgentRouter.route(parsed)
-        guard case .memo(let source) = route else {
-            XCTFail("invalid agent_status should fall to memo route")
+        guard case .inbox = route else {
+            XCTFail("invalid agent_status should fall to inbox route")
             return
         }
-        XCTAssertEqual(source, .incoming)
     }
 
     // MARK: - Group casing

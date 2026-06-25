@@ -1,51 +1,50 @@
 //
-//  Memo.swift
+//  AgentInboxItem.swift
 //  Models
+//
+//  旧 Bark 协议推送（无 agent_status 字段）的落盘点。
+//  对应 mock B 的 History → Incoming 段，徽章 [ BARK ]。
+//
+//  从原 Memo 改名而来：删除 source 字段（永远是 incoming）、删除
+//  tags 与 manual user-note 功能（mock B 已下线 memo 概念）。
 //
 
 import Foundation
 import SwiftData
 
-/// 备忘录 —— 同时承载两种来源：
-/// - `source == .manual`：用户手写 / Share Extension 写入
-/// - `source == .incoming`：旧 Bark 协议推送（无 agent_status 字段）的降级落盘
 @Model
-public final class Memo {
-    #Index<Memo>(
+public final class AgentInboxItem {
+    #Index<AgentInboxItem>(
         [\.createdAt],
         [\.isArchived, \.createdAt],
-        [\.sourceRaw, \.createdAt]
+        [\.group, \.createdAt]
     )
 
     @Attribute(.unique) public var id: UUID
-    public var sourceRaw: String
     public var title: String?
     public var body: String
     public var bodyTypeRaw: String
-    public var tags: [String]
-    /// 旧协议 incoming memo 的 Bark `group` 字段（manual memo 通常为 nil）。
+    /// Bark `group` 字段。
     public var group: String?
-    /// incoming memo 的来源服务器；manual 为 nil。
+    /// 来源服务器；用于多 server 场景的归属过滤。
     public var sourceServerID: UUID?
     public var url: String?
     public var imageURL: String?
     public var isPinned: Bool
     public var isArchived: Bool
-    /// 预留扩展 JSON blob。
+    /// 预留扩展 JSON blob（如解密失败时存原始密文）。
     public var metadata: Data?
     public var createdAt: Date
     public var updatedAt: Date
 
-    @Relationship(deleteRule: .cascade, inverse: \Resource.memo)
+    @Relationship(deleteRule: .cascade, inverse: \Resource.inboxItem)
     public var resources: [Resource]
 
     public init(
         id: UUID = UUID(),
-        source: MemoSource,
         title: String? = nil,
         body: String,
         bodyType: BodyType = .plainText,
-        tags: [String] = [],
         group: String? = nil,
         sourceServerID: UUID? = nil,
         url: String? = nil,
@@ -58,11 +57,9 @@ public final class Memo {
         resources: [Resource] = []
     ) {
         self.id = id
-        self.sourceRaw = source.rawValue
         self.title = title
         self.body = body
         self.bodyTypeRaw = bodyType.rawValue
-        self.tags = tags
         self.group = group
         self.sourceServerID = sourceServerID
         self.url = url
@@ -76,12 +73,7 @@ public final class Memo {
     }
 }
 
-extension Memo {
-    public var source: MemoSource {
-        get { MemoSource(rawValue: sourceRaw) ?? .manual }
-        set { sourceRaw = newValue.rawValue }
-    }
-
+extension AgentInboxItem {
     public var bodyType: BodyType {
         get { BodyType(rawValue: bodyTypeRaw) ?? .plainText }
         set { bodyTypeRaw = newValue.rawValue }

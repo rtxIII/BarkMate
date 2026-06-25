@@ -27,14 +27,12 @@ public struct MCResultRow: View {
     public enum Kind {
         case agent  // AGT · magenta
         case step   // STP · cyan
-        case memo   // MEM · lime
-        case incoming // INC · lime (与 memo 同色,旧 Bark 推送归类)
+        case incoming // INC · lime (旧 Bark 协议推送, 无 agent_status)
 
         var label: String {
             switch self {
             case .agent: return "AGT"
             case .step: return "STP"
-            case .memo: return "MEM"
             case .incoming: return "INC"
             }
         }
@@ -43,7 +41,7 @@ public struct MCResultRow: View {
             switch self {
             case .agent: return MissionControl.Color.magenta
             case .step: return MissionControl.Color.cyan
-            case .memo, .incoming: return MissionControl.Color.lime
+            case .incoming: return MissionControl.Color.lime
             }
         }
     }
@@ -150,9 +148,9 @@ public struct MCResultRow: View {
             timeLabel: "10:25"
         )
         MCResultRow(
-            kind: .memo,
+            kind: .incoming,
             title: "Deploy preview link",
-            body: "Saved from Share Extension placeholder. mock-coverage feedback.",
+            body: "Legacy push · no agent_status · staging url posted by hook. mock-coverage feedback.",
             query: "mock",
             timeLabel: "JUN 12"
         )
