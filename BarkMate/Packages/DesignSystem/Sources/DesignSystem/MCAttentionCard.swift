@@ -26,11 +26,13 @@ public struct MCAttentionCard: View {
     }
 
     public var body: some View {
-        let isBlocked = data.status == .blocked
-        let markerColor: Color = isBlocked
+        // mock B 的 .a-card.stuck 视觉(橙色描边/marker)同时覆盖 blocked 与 failed,
+        // 表达"有问题需要看一眼"。waitingInput 用 amber(默认色带)。
+        let usesStuckTone = data.status == .blocked || data.status == .failed
+        let markerColor: Color = usesStuckTone
             ? MissionControl.Color.orange
             : MissionControl.Color.amber
-        let markerGlow: Color = isBlocked
+        let markerGlow: Color = usesStuckTone
             ? MissionControl.Color.orangeGlow
             : MissionControl.Color.amberGlow
 

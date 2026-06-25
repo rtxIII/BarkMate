@@ -19,10 +19,14 @@ import SwiftUI
 public struct MCTriageCell: View {
     private let count: Int
     private let bucket: MissionControl.Status.Bucket
+    private let subtitle: String
 
-    public init(count: Int, bucket: MissionControl.Status.Bucket) {
+    /// - Parameter subtitle: 数字下方的小字。mock B 用于动态计数文案
+    ///   (如 "02 CI · 01 agent" / "01 done · 01 fail"),由 caller 根据实际数据生成。
+    public init(count: Int, bucket: MissionControl.Status.Bucket, subtitle: String) {
         self.count = count
         self.bucket = bucket
+        self.subtitle = subtitle
     }
 
     public var body: some View {
@@ -42,7 +46,7 @@ public struct MCTriageCell: View {
                 .tracking(1.3)
                 .foregroundStyle(MissionControl.Color.inkSoft)
 
-            Text(MissionControl.Status.bucketSubtitle(bucket))
+            Text(subtitle)
                 .font(MissionControl.Font.jetBrainsMono(size: 9.5, weight: .regular))
                 .foregroundStyle(MissionControl.Color.inkSoft)
         }
@@ -72,9 +76,9 @@ public struct MCTriageCell: View {
 
 #Preview {
     HStack(spacing: 8) {
-        MCTriageCell(count: 2, bucket: .needsYou)
-        MCTriageCell(count: 3, bucket: .running)
-        MCTriageCell(count: 1, bucket: .settled)
+        MCTriageCell(count: 2, bucket: .needsYou, subtitle: "wait input · stuck on token")
+        MCTriageCell(count: 3, bucket: .running, subtitle: "02 CI · 01 agent")
+        MCTriageCell(count: 2, bucket: .settled, subtitle: "01 done · 01 fail")
     }
     .padding(16)
     .mcScreenBackground()

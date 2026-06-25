@@ -94,9 +94,15 @@ private struct DashboardContent: View {
             .map(AgentCardData.fromTask)
     }
 
-    private var settledTasks: [AgentCardData] {
+    private var settledDoneTasks: [AgentCardData] {
         tasks
             .filter { !$0.isArchived && $0.status == .done }
+            .map(AgentCardData.fromTask)
+    }
+
+    private var settledFailedTasks: [AgentCardData] {
+        tasks
+            .filter { !$0.isArchived && $0.status == .failed }
             .map(AgentCardData.fromTask)
     }
 
@@ -124,7 +130,7 @@ private struct DashboardContent: View {
     }
 
     private var isEmpty: Bool {
-        needsYouTasks.isEmpty && runningTasks.isEmpty && settledTasks.isEmpty
+        needsYouTasks.isEmpty && runningTasks.isEmpty && settledDoneTasks.isEmpty && settledFailedTasks.isEmpty
     }
 
     var body: some View {
@@ -200,10 +206,10 @@ private struct DashboardContent: View {
             }
         }
 
-        if !settledTasks.isEmpty {
-            MCSectionHeader("Settled", trailing: countLabel(settledTasks.count))
+        if !settledDoneTasks.isEmpty || !settledFailedTasks.isEmpty {
+            MCSectionHeader("Settled", trailing: settledTrailingLabel)
             VStack(spacing: 0) {
-                ForEach(settledTasks) { data in
+                ForEach(settledDoneTasks) { data in
                     NavigationLink {
                         AgentDetailView(taskID: data.id)
                     } label: {
@@ -213,7 +219,29 @@ private struct DashboardContent: View {
                     .contextMenu { agentContextMenu(for: data.id) }
                 }
             }
+            // mock B 把 fail 卡放 Settled 段,用 MCAttentionCard.stuck 视觉(橙色 marker)显示。
+            if !settledFailedTasks.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(settledFailedTasks) { data in
+                        NavigationLink {
+                            AgentDetailView(taskID: data.id)
+                        } label: {
+                            MCAttentionCard(data: data)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu { agentContextMenu(for: data.id) }
+                    }
+                }
+                .padding(.top, settledDoneTasks.isEmpty ? 0 : 10)
+            }
         }
+    }
+
+    private var settledTrailingLabel: String {
+        var parts: [String] = []
+        if !settledDoneTasks.isEmpty { parts.append("\(countLabel(settledDoneTasks.count)) done") }
+        if !settledFailedTasks.isEmpty { parts.append("\(countLabel(settledFailedTasks.count)) fail") }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Empty state

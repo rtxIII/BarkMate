@@ -35,9 +35,9 @@ public struct MCHeadsUpPanel: View {
             .foregroundStyle(MissionControl.Color.inkSoft)
 
             HStack(alignment: .top, spacing: 8) {
-                MCTriageCell(count: needsYouCount, bucket: .needsYou)
-                MCTriageCell(count: runningCount, bucket: .running)
-                MCTriageCell(count: settledCount, bucket: .settled)
+                MCTriageCell(count: needsYouCount, bucket: .needsYou, subtitle: needsYouSubtitle)
+                MCTriageCell(count: runningCount, bucket: .running, subtitle: runningSubtitle)
+                MCTriageCell(count: settledCount, bucket: .settled, subtitle: settledSubtitle)
             }
         }
         .padding(14)
@@ -49,7 +49,7 @@ public struct MCHeadsUpPanel: View {
     }
 
     private var needsYouCount: Int {
-        counts.waiting + counts.blocked + counts.failed
+        counts.waiting + counts.blocked
     }
 
     private var runningCount: Int {
@@ -57,12 +57,40 @@ public struct MCHeadsUpPanel: View {
     }
 
     private var settledCount: Int {
-        counts.done
+        counts.done + counts.failed
     }
 
     private var activeLabel: String {
         let n = counts.active
         return n < 10 ? "0\(n)" : "\(n)"
+    }
+
+    /// "01 wait · 01 stuck"(只列非零项)。0 → "—"。
+    private var needsYouSubtitle: String {
+        var parts: [String] = []
+        if counts.waiting > 0 { parts.append("\(formatted(counts.waiting)) wait") }
+        if counts.blocked > 0 { parts.append("\(formatted(counts.blocked)) stuck") }
+        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
+    }
+
+    /// "03 running"(+ stale 数量,如有)。
+    private var runningSubtitle: String {
+        var parts: [String] = []
+        if counts.running > 0 { parts.append("\(formatted(counts.running)) running") }
+        if counts.stale > 0 { parts.append("\(formatted(counts.stale)) stale") }
+        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
+    }
+
+    /// "01 done · 01 fail"。
+    private var settledSubtitle: String {
+        var parts: [String] = []
+        if counts.done > 0 { parts.append("\(formatted(counts.done)) done") }
+        if counts.failed > 0 { parts.append("\(formatted(counts.failed)) fail") }
+        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
+    }
+
+    private func formatted(_ n: Int) -> String {
+        n < 10 ? "0\(n)" : "\(n)"
     }
 }
 
