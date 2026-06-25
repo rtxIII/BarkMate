@@ -503,22 +503,40 @@ extension AgentCardData {
 }
 
 extension HistoryItemData {
+    /// Mock B 的 badge 命名:
+    ///   - stale → [ STALE ] (kind = .stale, 时间衰退色)
+    ///   - failed → [ AGT-FAIL ]
+    ///   - done / 其它 archived → [ AGT-DONE ]
     static func fromTask(_ task: AgentTask) -> HistoryItemData {
-        HistoryItemData(
+        let kind: HistoryItemKind
+        let badge: String
+        switch task.status {
+        case .stale:
+            kind = .stale
+            badge = "stale"
+        case .failed:
+            kind = .agent
+            badge = "agt-fail"
+        default:
+            kind = .agent
+            badge = "agt-done"
+        }
+        return HistoryItemData(
             id: task.id,
-            kind: .agent,
-            kindBadge: task.isArchived ? "archived" : task.status.label,
+            kind: kind,
+            kindBadge: badge,
             title: task.displayName,
             body: task.latestStepTitle ?? "Completed agent task",
             updatedAt: task.updatedAt
         )
     }
 
+    /// 旧 Bark 协议推送 → mock B `[ BARK ]` 青色徽章。
     static func fromInboxItem(_ item: AgentInboxItem) -> HistoryItemData {
         HistoryItemData(
             id: item.id,
             kind: .incoming,
-            kindBadge: "BARK",
+            kindBadge: "bark",
             title: item.title ?? "Push",
             body: item.body,
             updatedAt: item.updatedAt

@@ -120,10 +120,17 @@ private struct HistoryItemMissionControlRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
+                // mock B `.h-item` 标题前置一个 bracket badge 前缀
+                // ([ AGT-DONE ] / [ BARK ] / [ STALE ])。
+                MCBracketBadge(
+                    code: "[ \(data.kindBadge.uppercased()) ]",
+                    color: badgeColor
+                )
                 Text(data.title)
                     .font(MissionControl.Font.interTight(size: 13.5, weight: .bold))
                     .tracking(-0.27)
                     .foregroundStyle(MissionControl.Color.ink)
+                    .padding(.top, 2)
                 Text(data.body)
                     .font(MissionControl.Font.jetBrainsMono(size: 11, weight: .regular))
                     .lineSpacing(3)
@@ -149,6 +156,14 @@ private struct HistoryItemMissionControlRow: View {
             Rectangle()
                 .fill(MissionControl.Color.rule)
                 .frame(height: MissionControl.Border.hairline)
+        }
+    }
+
+    private var badgeColor: Color {
+        switch data.kind {
+        case .agent: return MissionControl.Color.lime
+        case .incoming: return MissionControl.Color.cyan
+        case .stale: return MissionControl.Color.inkMute
         }
     }
 

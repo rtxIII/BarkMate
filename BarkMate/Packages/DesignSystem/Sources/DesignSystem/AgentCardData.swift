@@ -76,6 +76,7 @@ public struct StepRowData: Identifiable, Equatable, Sendable {
 public enum HistoryItemKind: String, Sendable, Equatable {
     case agent
     case incoming
+    case stale
 }
 
 public struct HistoryItemData: Identifiable, Equatable, Sendable {
