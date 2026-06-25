@@ -51,13 +51,24 @@ public struct MCResultRow: View {
     private let bodyText: String
     private let query: String
     private let timeLabel: String
+    /// 嵌套样式:true 时显示 hull 背景 + 2pt cyan 左边,表示该 step 属于上面已显示的 agent task。
+    /// 对应 mock B `.s-res` `background:var(--hull); border-left:2px solid var(--cyan)`。
+    private let isNested: Bool
 
-    public init(kind: Kind, title: String, body: String, query: String, timeLabel: String) {
+    public init(
+        kind: Kind,
+        title: String,
+        body: String,
+        query: String,
+        timeLabel: String,
+        isNested: Bool = false
+    ) {
         self.kind = kind
         self.title = title
         self.bodyText = body
         self.query = query
         self.timeLabel = timeLabel
+        self.isNested = isNested
     }
 
     public var body: some View {
@@ -69,7 +80,7 @@ public struct MCResultRow: View {
                 .frame(width: 56, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(Self.highlight(title, query: query, isBody: false))
+                Text(Self.highlight(displayTitle, query: query, isBody: false))
                     .lineLimit(1)
                 Text(Self.highlight(bodyText, query: query, isBody: true))
                     .lineLimit(3)
@@ -82,11 +93,24 @@ public struct MCResultRow: View {
                 .foregroundStyle(MissionControl.Color.inkSoft)
         }
         .padding(.vertical, 11)
+        .padding(.leading, isNested ? 8 : 0)
+        .background(isNested ? MissionControl.Color.hull : Color.clear)
+        .overlay(alignment: .leading) {
+            if isNested {
+                Rectangle()
+                    .fill(MissionControl.Color.cyan)
+                    .frame(width: 2)
+            }
+        }
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(MissionControl.Color.rule)
                 .frame(height: MissionControl.Border.hairline)
         }
+    }
+
+    private var displayTitle: String {
+        isNested ? "↳ \(title)" : title
     }
 
     /// 把 text 中匹配 query(大小写不敏感)的子串渲染成 amber 高亮。

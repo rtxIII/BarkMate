@@ -20,7 +20,8 @@ struct SearchView: View {
 
     @State private var queryText: String = ""
     @State private var selectedScope: ScopeChip = .all
-    @State private var statusFilter: AgentStatusFilter = .all
+    /// 多选 status filter chips。空 = 不过滤(对齐 mock B 第二行 "+ wait / + stuck / + fail / + done")。
+    @State private var statusChips: Set<AgentStatus> = []
     @State private var agentFilter: String? = nil
     @State private var dateFilter: DateRangeFilter = .all
     @State private var results: [SearchResult] = []
@@ -43,10 +44,13 @@ struct SearchView: View {
 
                     chipScope
 
+                    chipStatusRow
+
                     chipFilters
 
                     if shouldShowEmpty {
                         emptyState
+                        savedQueriesSection
                     } else if results.isEmpty {
                         noResults
                     } else {
@@ -62,7 +66,7 @@ struct SearchView: View {
         .onAppear { loadFacets() }
         .onChange(of: queryText) { _, _ in runSearch() }
         .onChange(of: selectedScope) { _, _ in runSearch() }
-        .onChange(of: statusFilter) { _, _ in runSearch() }
+        .onChange(of: statusChips) { _, _ in runSearch() }
         .onChange(of: agentFilter) { _, _ in runSearch() }
         .onChange(of: dateFilter) { _, _ in runSearch() }
     }
@@ -123,18 +127,33 @@ struct SearchView: View {
         }
     }
 
-    private var chipFilters: some View {
-        HStack(spacing: 6) {
-            Menu {
-                Picker("Status", selection: $statusFilter) {
-                    ForEach(AgentStatusFilter.allCases) { f in
-                        Text(f.label).tag(f)
+    /// Mock B 第二行的彩色 status filter chips。多选 toggle。
+    /// 颜色与 MissionControl.Status.render 对齐:wait=amber / stuck=orange / fail=magenta / done=lime。
+    private var chipStatusRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(StatusFilterChip.allCases) { chip in
+                    let isOn = statusChips.contains(chip.status)
+                    MCChip(
+                        chip.label,
+                        isActive: isOn,
+                        tint: chip.tint
+                    ) {
+                        if isOn {
+                            statusChips.remove(chip.status)
+                        } else {
+                            statusChips.insert(chip.status)
+                        }
                     }
                 }
-            } label: {
-                filterPillLabel("status: \(statusFilter.label)")
             }
+        }
+    }
 
+    /// Agent / Date 过滤保留 Menu 形式;mock B 把它们隐藏到 Saved queries 但
+    /// 实际数据驱动还是需要 picker。两个 chip 用 .mcPill 样式。
+    private var chipFilters: some View {
+        HStack(spacing: 6) {
             Menu {
                 Button("all") { agentFilter = nil }
                 ForEach(facets.agentIDs, id: \.self) { agentID in
@@ -161,6 +180,34 @@ struct SearchView: View {
             .mcPill()
     }
 
+    /// Mock B 的 Saved queries 段。点击预设过滤组合。
+    @ViewBuilder
+    private var savedQueriesSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            MCSectionHeader("Saved queries", trailing: "jump to")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    MCChip("Stuck on…", isActive: false) {
+                        statusChips = [.blocked]
+                    }
+                    MCChip("Fails · 7d", isActive: false) {
+                        statusChips = [.failed]
+                        dateFilter = .last7d
+                    }
+                    MCChip("All wait", isActive: false) {
+                        statusChips = [.waitingInput]
+                    }
+                    MCChip("Reset", isActive: false) {
+                        statusChips = []
+                        agentFilter = nil
+                        dateFilter = .all
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
     // MARK: - Results
 
     private var resultsList: some View {
@@ -179,18 +226,44 @@ struct SearchView: View {
                 }
 
             VStack(spacing: 0) {
-                ForEach(results, id: \.id) { result in
+                // 边遍历边追踪已经显示过的 task UUID;遇到 step 且 task UUID 已显示 → 嵌套样式。
+                let nestingFlags = computeNestingFlags(results)
+                ForEach(Array(results.enumerated()), id: \.offset) { index, result in
                     MCResultRow(
                         kind: kind(for: result),
                         title: title(for: result),
                         body: body(for: result),
                         query: queryText,
-                        timeLabel: timeLabel(for: result)
+                        timeLabel: timeLabel(for: result),
+                        isNested: nestingFlags[index]
                     )
                 }
             }
         }
         .padding(.top, 4)
+    }
+
+    /// 计算每个 result 是否嵌套:step 且其 task 已在前面 result 中显示过。
+    private func computeNestingFlags(_ results: [SearchResult]) -> [Bool] {
+        var shownTaskIDs: Set<UUID> = []
+        var flags: [Bool] = []
+        for result in results {
+            switch result {
+            case .agent(let task):
+                shownTaskIDs.insert(task.id)
+                flags.append(false)
+            case .step(let step):
+                if let tid = step.task?.id, shownTaskIDs.contains(tid) {
+                    flags.append(true)
+                } else {
+                    if let tid = step.task?.id { shownTaskIDs.insert(tid) }
+                    flags.append(false)
+                }
+            case .inbox:
+                flags.append(false)
+            }
+        }
+        return flags
     }
 
     private var emptyState: some View {
@@ -239,7 +312,7 @@ struct SearchView: View {
     }
 
     private var hasActiveFilters: Bool {
-        statusFilter != .all || agentFilter != nil || dateFilter != .all
+        !statusChips.isEmpty || agentFilter != nil || dateFilter != .all
     }
 
     private var crumbQuery: String {
@@ -305,7 +378,7 @@ struct SearchView: View {
             text: trimmed,
             scope: selectedScope.scope,
             agentIDs: agentFilter.map { Set([$0]) } ?? [],
-            statuses: Set(statusFilter.statuses),
+            statuses: statusChips,
             dateRange: dateFilter.range
         )
         do {
@@ -340,36 +413,38 @@ private enum ScopeChip: String, Identifiable, CaseIterable {
     }
 }
 
-/// 单选状态 filter:`.all` 不过滤;`.attention` 聚合 waitingInput / blocked / failed
-/// 与 Dashboard FilterStrip 一致。
-private enum AgentStatusFilter: String, Identifiable, CaseIterable {
-    case all, running, waiting, blocked, failed, done, stale, attention
+/// Mock B 第二行 status filter chip 模型。
+/// 4 个 chip 对应 4 种用户最常筛选的状态;颜色与 MissionControl.Status.render 一致。
+private enum StatusFilterChip: String, Identifiable, CaseIterable {
+    case wait, stuck, fail, done
 
     var id: String { rawValue }
 
-    var label: String {
+    var status: AgentStatus {
         switch self {
-        case .all: return "all"
-        case .running: return "running"
-        case .waiting: return "waiting"
-        case .blocked: return "blocked"
-        case .failed: return "failed"
-        case .done: return "done"
-        case .stale: return "stale"
-        case .attention: return "needs attention"
+        case .wait: return .waitingInput
+        case .stuck: return .blocked
+        case .fail: return .failed
+        case .done: return .done
         }
     }
 
-    var statuses: [AgentStatus] {
+    /// Chip 前缀 + label。 mock B `+ wait` 表示"添加此 filter"。
+    var label: String {
         switch self {
-        case .all: return []
-        case .running: return [.running]
-        case .waiting: return [.waitingInput]
-        case .blocked: return [.blocked]
-        case .failed: return [.failed]
-        case .done: return [.done]
-        case .stale: return [.stale]
-        case .attention: return [.waitingInput, .blocked, .failed]
+        case .wait: return "+ wait"
+        case .stuck: return "+ stuck"
+        case .fail: return "+ fail"
+        case .done: return "+ done"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .wait: return MissionControl.Color.amber
+        case .stuck: return MissionControl.Color.orange
+        case .fail: return MissionControl.Color.magenta
+        case .done: return MissionControl.Color.lime
         }
     }
 }

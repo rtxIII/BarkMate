@@ -18,11 +18,20 @@ import SwiftUI
 public struct MCChip: View {
     private let label: String
     private let isActive: Bool
+    /// 可选 tint。非 nil 时,chip 用此颜色作为 text / border / active 背景
+    /// (用于 mock B 的彩色 status filter chip:+ wait / + stuck / + fail / + done)。
+    private let tint: Color?
     private let action: () -> Void
 
-    public init(_ label: String, isActive: Bool, action: @escaping () -> Void) {
+    public init(
+        _ label: String,
+        isActive: Bool,
+        tint: Color? = nil,
+        action: @escaping () -> Void
+    ) {
         self.label = label
         self.isActive = isActive
+        self.tint = tint
         self.action = action
     }
 
@@ -30,22 +39,34 @@ public struct MCChip: View {
         Button(action: action) {
             Text(label.uppercased())
         }
-        .buttonStyle(MCChipStyle(isActive: isActive))
+        .buttonStyle(MCChipStyle(isActive: isActive, tint: tint))
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
 
 private struct MCChipStyle: ButtonStyle {
     let isActive: Bool
+    let tint: Color?
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
         let foreground: Color = {
+            if let tint {
+                return isActive ? MissionControl.Color.void : tint
+            }
             if isActive { return MissionControl.Color.void }
             return pressed ? MissionControl.Color.ink : MissionControl.Color.inkSoft
         }()
-        let background: Color = isActive ? MissionControl.Color.ink : MissionControl.Color.hull
+        let background: Color = {
+            if let tint {
+                return isActive ? tint : MissionControl.Color.hull
+            }
+            return isActive ? MissionControl.Color.ink : MissionControl.Color.hull
+        }()
         let stroke: Color = {
+            if let tint {
+                return tint
+            }
             if isActive { return MissionControl.Color.ink }
             return pressed ? MissionControl.Color.inkSoft : MissionControl.Color.ruleHot
         }()
