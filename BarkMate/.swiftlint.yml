@@ -18,7 +18,6 @@ excluded:
   - Packages/Models/.build
   - Packages/Store/.build
   - Packages/BarkService/.build
-  - Packages/MemoKit/.build
   - Packages/DesignSystem/.build
   - BarkMate.xcodeproj
   - DerivedData

@@ -29,8 +29,6 @@ packages:
     path: Packages/BarkService
   Store:
     path: Packages/Store
-  MemoKit:
-    path: Packages/MemoKit
   DesignSystem:
     path: Packages/DesignSystem
   Factory:
@@ -92,7 +90,6 @@ targets:
       - package: Models
       - package: BarkService
       - package: Store
-      - package: MemoKit
       - package: DesignSystem
       - package: Factory
       - package: MarkdownUI
