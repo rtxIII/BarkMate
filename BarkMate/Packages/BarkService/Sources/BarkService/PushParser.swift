@@ -22,6 +22,7 @@ public struct ParsedPush: Sendable, Equatable, Codable {
     public let iconURL: String?
     public let ciphertext: String?
     public let agentStatus: AgentStatus?
+    public let agentIDOverride: String?
     public let taskID: String?
     public let progress: String?
     public let eta: Date?
@@ -41,6 +42,7 @@ public struct ParsedPush: Sendable, Equatable, Codable {
         iconURL: String? = nil,
         ciphertext: String? = nil,
         agentStatus: AgentStatus? = nil,
+        agentIDOverride: String? = nil,
         taskID: String? = nil,
         progress: String? = nil,
         eta: Date? = nil,
@@ -59,6 +61,7 @@ public struct ParsedPush: Sendable, Equatable, Codable {
         self.iconURL = iconURL
         self.ciphertext = ciphertext
         self.agentStatus = agentStatus
+        self.agentIDOverride = agentIDOverride
         self.taskID = taskID
         self.progress = progress
         self.eta = eta
@@ -67,6 +70,9 @@ public struct ParsedPush: Sendable, Equatable, Codable {
     }
 
     public var agentID: String {
+        // 优先 agent_id(多 console 按项目分卡),回退 group,再回退 "default"。
+        let override = (agentIDOverride ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !override.isEmpty { return override }
         let trimmed = (group ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "default" : trimmed
     }
@@ -104,6 +110,7 @@ public enum PushParser {
         let imageURL = pickString(lowered, "image")
         let iconURL = pickString(lowered, "icon")
         let agentStatus = pickString(lowered, "agent_status").flatMap(AgentStatus.init(rawValue:))
+        let agentIDOverride = pickString(lowered, "agent_id")
         let taskID = pickString(lowered, "task_id")
         let progress = pickString(lowered, "progress")
         let eta = pickString(lowered, "eta").flatMap(parseISODate)
@@ -128,6 +135,7 @@ public enum PushParser {
             stableFields.append(iconURL ?? "")
             stableFields.append(ciphertextString ?? "")
             stableFields.append(agentStatus?.rawValue ?? "")
+            stableFields.append(agentIDOverride ?? "")
             stableFields.append(taskID ?? "")
             stableFields.append(progress ?? "")
             let stable = stableFields.joined(separator: "\u{1F}")
@@ -147,6 +155,7 @@ public enum PushParser {
             iconURL: iconURL,
             ciphertext: ciphertextString,
             agentStatus: agentStatus,
+            agentIDOverride: agentIDOverride,
             taskID: taskID,
             progress: progress,
             eta: eta,
