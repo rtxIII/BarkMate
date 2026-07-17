@@ -21,6 +21,10 @@ struct SettingsView: View {
     @Query(sort: \Server.createdAt, order: .reverse)
     private var servers: [Server]
 
+    // Hooks 徽标的弱代理信号:app 无法直接探测开发机上的 hook 是否装好,
+    // 以"是否收到过 ≥1 条 agent 推送"作为可靠的设备端间接证据。
+    @Query private var agentTasks: [AgentTask]
+
     @State private var timeSensitiveAlerts: Bool = true
     @State private var showSetupGuide: Bool = false
     @State private var showServerList: Bool = false
@@ -35,6 +39,7 @@ struct SettingsView: View {
                     title: "Settings"
                 ) {
                     MCIconButton("+") { showServerList = true }
+                        .accessibilityIdentifier("settings-server-list-shortcut")
                 }
                 .padding(.bottom, 14)
 
@@ -55,6 +60,7 @@ struct SettingsView: View {
                         ) { MCSettingValue("open") }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-manage-servers")
 
                     MCSectionHeader("Agent behavior", trailing: "defaults")
                     MCSettingRow(
@@ -81,9 +87,9 @@ struct SettingsView: View {
                     MCSectionHeader("Hooks", trailing: "agent integration")
                     MCSettingRow(
                         title: "Auto-installed",
-                        detail: "Claude (Stop · Notification) · Codex (on_block) · OpenCode (event:*)."
+                        detail: hooksDetail
                     ) {
-                        MCSettingStateBadge("active", color: MissionControl.Color.lime)
+                        MCSettingStateBadge(hooksBadgeText, color: hooksBadgeColor)
                     }
                     Button { showSetupGuide = true } label: {
                         MCSettingRow(
@@ -92,6 +98,7 @@ struct SettingsView: View {
                         ) { MCSettingValue("open ›") }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-rerun-installer")
 
                     MCSectionHeader("Privacy", trailing: "local")
                     MCSettingRow(
@@ -144,6 +151,27 @@ struct SettingsView: View {
         guard selectedTab.pendingDeepLink == .setupGuide else { return }
         showSetupGuide = true
         selectedTab.pendingDeepLink = nil
+    }
+
+    // MARK: - Hooks 徽标(弱代理信号)
+
+    /// 收到过 ≥1 条 agent 推送即视为 hook 已在某处生效。
+    private var hasReceivedAgentPush: Bool {
+        !agentTasks.isEmpty
+    }
+
+    private var hooksBadgeText: String {
+        hasReceivedAgentPush ? "active" : "setup"
+    }
+
+    private var hooksBadgeColor: Color {
+        hasReceivedAgentPush ? MissionControl.Color.lime : MissionControl.Color.inkSoft
+    }
+
+    private var hooksDetail: String {
+        hasReceivedAgentPush
+            ? "Claude (Stop · Notification) · Codex (on_block) · OpenCode (event:*)."
+            : "Run the install script on your machine to wire up Claude / Codex / OpenCode."
     }
 
     private var serversTrailing: String {

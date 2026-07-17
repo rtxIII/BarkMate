@@ -30,6 +30,10 @@ public struct MCRunCompactRow: View {
         let isDone = data.status == .done
         let accent: Color = isDone ? MissionControl.Color.lime : data.status.mcColor
         let glow: Color = isDone ? MissionControl.Color.limeGlow : data.status.mcGlow
+        // done 强制满条(手动 Mark Done 或未带 progress 的完成推送都会命中);
+        // 非 done 且无 progress 数据时 effectiveFraction 为 nil → 不画进度条/百分比列,
+        // 而非用 0 渲染成"卡在 0%"的空条。
+        let effectiveFraction: Double? = isDone ? 1 : data.progressFraction
 
         return HStack(alignment: .center, spacing: 10) {
             Text(initials)
@@ -51,14 +55,16 @@ public struct MCRunCompactRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            MCProgressBar(value: data.progressFraction ?? 0, color: accent, glow: glow)
-                .frame(width: 90)
+            if let fraction = effectiveFraction {
+                MCProgressBar(value: fraction, color: accent, glow: glow)
+                    .frame(width: 90)
 
-            Text(pctLabel)
-                .font(MissionControl.Font.jetBrainsMono(size: 11, weight: .bold))
-                .tracking(0.4)
-                .foregroundStyle(accent)
-                .frame(minWidth: 36, alignment: .trailing)
+                Text(pctLabel(fraction))
+                    .font(MissionControl.Font.jetBrainsMono(size: 11, weight: .bold))
+                    .tracking(0.4)
+                    .foregroundStyle(accent)
+                    .frame(minWidth: 36, alignment: .trailing)
+            }
         }
         .padding(.vertical, 10)
         .overlay(alignment: .bottom) {
@@ -85,12 +91,10 @@ public struct MCRunCompactRow: View {
         return data.latestStep
     }
 
-    private var pctLabel: String {
+    /// fraction 已由 body 保证非 nil(done→1,其余为已解析值)。done 显 "DONE",否则显百分比。
+    private func pctLabel(_ fraction: Double) -> String {
         if data.status == .done { return "DONE" }
-        if let progress = data.progressFraction {
-            return "\(Int(progress * 100))%"
-        }
-        return data.progressLabel ?? ""
+        return "\(Int(fraction * 100))%"
     }
 }
 
