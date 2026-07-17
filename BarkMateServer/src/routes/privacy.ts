@@ -57,7 +57,7 @@ function renderHtml(): string {
 <h1>BarkAgent Privacy Policy</h1>
 
 <p>This policy describes how the BarkAgent iOS application ("the App") and the BarkAgent
-self-hosted push relay ("the Server", deployed at <code>barkmate.we2.xyz</code>) handle
+self-hosted push relay ("the Server", deployed at <code>barkagent.we2.xyz</code>) handle
 your data. The App and the Server are open source.</p>
 
 <h2>1. Who we are</h2>
@@ -66,9 +66,9 @@ attribution, or crash-reporting infrastructure. The App contains no third-party 
 
 <h2>2. Data we process</h2>
 <p><strong>On your device</strong>: APNs device token, configured server addresses + API
-keys, optional AES key (Keychain only), AgentTask / AgentStep / Memo records,
-user-selected memo image attachments, cached push images. Stored inside the App Group
-container <code>group.com.barkmate.shared</code>.</p>
+keys, optional AES key (Keychain only), AgentTask / AgentStep records,
+cached push images. Stored inside the App Group
+container <code>group.com.barkagent.shared</code>.</p>
 <p><strong>On the Server</strong>: Cloudflare KV stores only
 <code>device:&lt;key&gt; → APNs token</code>. We do not log push bodies and do not
 persist push payloads.</p>
@@ -79,8 +79,7 @@ Notification service. No other network destinations are contacted.</p>
 <h2>3. What we do not collect</h2>
 <p>Name, email, phone, contacts, calendar, location, IDFA, device fingerprint, browsing
 history, microphone, camera, health, biometric data — none. The App never asks for these
-permissions. If you attach an image to a memo, iOS presents a system photo picker and
-BarkAgent stores only the image you selected, locally on your device.</p>
+permissions.</p>
 
 <h2>4. Encryption</h2>
 <p>Pushes may be end-to-end encrypted with AES-128/192/256. Keys live only in your
@@ -110,7 +109,7 @@ from them.</p>
 <h1>BarkAgent 隐私政策</h1>
 
 <p>本政策说明 BarkAgent iOS 应用("应用")与 BarkAgent 自部署推送中继("服务器",运行于
-<code>barkmate.we2.xyz</code>)如何处理您的数据。两者均为开源。</p>
+<code>barkagent.we2.xyz</code>)如何处理您的数据。两者均为开源。</p>
 
 <h2>1. 我们是谁</h2>
 <p>BarkAgent 是开源项目。我们不运营任何分析、广告、归因或崩溃上报基础设施。应用不包含
@@ -118,9 +117,8 @@ from them.</p>
 
 <h2>2. 我们处理哪些数据</h2>
 <p><strong>在您的设备上</strong>:APNs device token、已配置的服务器地址 + API key、
-可选 AES 密钥(仅 Keychain)、AgentTask / AgentStep / Memo 记录、用户主动选择的
-Memo 图片附件、推送图片缓存。位于 App Group 容器 <code>group.com.barkmate.shared</code>
-内。</p>
+可选 AES 密钥(仅 Keychain)、AgentTask / AgentStep 记录、推送图片缓存。位于 App Group
+容器 <code>group.com.barkagent.shared</code> 内。</p>
 <p><strong>在服务器上</strong>:Cloudflare KV 只存
 <code>device:&lt;key&gt; → APNs token</code>。我们不记录推送内容,也不持久化推送
 payload。</p>
@@ -129,8 +127,7 @@ payload。</p>
 
 <h2>3. 我们不收集的内容</h2>
 <p>姓名、邮箱、电话、通讯录、日历、位置、IDFA、设备指纹、浏览历史、麦克风、
-相机、健康或生物特征数据 — 都不收集。应用从不申请这些权限。如果您给备忘录附加
-图片,iOS 会显示系统照片选择器,BarkAgent 只在本机保存您主动选择的图片。</p>
+相机、健康或生物特征数据 — 都不收集。应用从不申请这些权限。</p>
 
 <h2>4. 加密</h2>
 <p>推送可使用 AES-128/192/256 端到端加密,密钥只存在于您 iPhone 的 Keychain。服务器
@@ -160,18 +157,18 @@ function renderText(): string {
   return [
     `BarkAgent Privacy Policy`,
     `Version ${VERSION} · Effective ${EFFECTIVE_DATE}`,
-    `Canonical: https://barkmate.we2.xyz/privacy`,
+    `Canonical: https://barkagent.we2.xyz/privacy`,
     ``,
     `1. Who we are`,
     `   Open-source project. No analytics, ads, attribution, crash-reporting, or third-party SDKs.`,
     ``,
     `2. Data we process`,
-    `   - On device: APNs token, server addresses + keys, optional AES key (Keychain), AgentTask/AgentStep/Memo, user-selected memo image attachments, cached push images. App Group: group.com.barkmate.shared.`,
+    `   - On device: APNs token, server addresses + keys, optional AES key (Keychain), AgentTask/AgentStep, cached push images. App Group: group.com.barkagent.shared.`,
     `   - On server (Cloudflare KV): device:<key> -> APNs token only. No push bodies logged. No payload persistence.`,
     `   - In transit: HTTPS to (a) your configured Bark servers, (b) image URLs in push payloads, (c) Apple APNs. No other destinations.`,
     ``,
     `3. We do NOT collect`,
-    `   name, email, phone, contacts, calendar, location, IDFA, device fingerprint, browsing history, microphone, camera, health, biometric data. User-selected memo image attachments are stored locally only.`,
+    `   name, email, phone, contacts, calendar, location, IDFA, device fingerprint, browsing history, microphone, camera, health, biometric data.`,
     ``,
     `4. Encryption`,
     `   AES-128/192/256 end-to-end (CBC/ECB/GCM). Keys live in iPhone Keychain only. Server transports ciphertext only. APNs JWT signed locally with ES256.`,
@@ -198,10 +195,10 @@ function renderText(): string {
     ``,
     `1. 我们是谁:开源项目,无分析/广告/归因/崩溃上报/第三方 SDK。`,
     `2. 数据处理:`,
-    `   - 设备本地:APNs token、服务器配置、可选 AES key (Keychain)、AgentTask/AgentStep/Memo、用户主动选择的 Memo 图片附件、推送图片缓存。位于 App Group group.com.barkmate.shared。`,
+    `   - 设备本地:APNs token、服务器配置、可选 AES key (Keychain)、AgentTask/AgentStep、推送图片缓存。位于 App Group group.com.barkagent.shared。`,
     `   - 服务器 KV:仅 device:<key> -> APNs token。不记录推送内容,不持久化 payload。`,
     `   - 传输:HTTPS 至(a) 您配置的 Bark 服务器、(b) 推送内嵌的图片 URL、(c) Apple APNs。`,
-    `3. 不收集:姓名、邮箱、电话、通讯录、日历、位置、IDFA、指纹、浏览历史、麦克风、相机、健康或生物特征。用户主动选择的 Memo 图片附件仅保存在本机。`,
+    `3. 不收集:姓名、邮箱、电话、通讯录、日历、位置、IDFA、指纹、浏览历史、麦克风、相机、健康或生物特征。`,
     `4. 加密:AES-128/192/256 端到端,密钥只在 iPhone Keychain。服务器仅转密文。APNs JWT 本地 ES256 签名。`,
     `5. 共享:不售卖、不出租、不共享。仅 Apple、Cloudflare、您添加的服务器运营者会接触到流量。`,
     `6. 权利:调用 DELETE /register/:device_key、卸载清本地、可自部署、源代码可审计。`,

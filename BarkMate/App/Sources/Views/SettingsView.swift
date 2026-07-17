@@ -76,10 +76,6 @@ struct SettingsView: View {
                         MCToggle(isOn: $timeSensitiveAlerts, label: "Time-Sensitive alerts")
                     }
                     MCSettingRow(
-                        title: "Mute rules",
-                        detail: "By agent_id / status / server. (Coming soon)"
-                    ) { MCSettingValue("manage ›", tone: .dim) }
-                    MCSettingRow(
                         title: "Alert sound",
                         detail: "Per-status override · default = system."
                     ) { MCSettingValue("default") }
@@ -107,7 +103,7 @@ struct SettingsView: View {
                     ) { MCSettingValue("off", tone: .dim) }
                     MCSettingRow(
                         title: "Privacy policy",
-                        detail: "Required by App Store · barkmate.app/privacy."
+                        detail: "Required by App Store · barkagent.we2.xyz/privacy."
                     ) { MCSettingValue("view ›", tone: .dim) }
 
                     MCSectionHeader("Device", trailing: "APNs")

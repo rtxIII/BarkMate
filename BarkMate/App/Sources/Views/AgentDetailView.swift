@@ -1,10 +1,10 @@
 //
 //  AgentDetailView.swift
-//  BarkMate
+//  BarkAgent
 //
-//  V0.3 Phase 3.2 Agent detail。
-//  DetailHero(深色) + Pin/Mute/Archive/Mark done 按钮行 + SummaryPanel 占位(Phase 6 接 LLM)
-//  + 重写 StepRow 卡片列表。
+//  V0.4 Day 6 — Mission Control 重写。
+//  MCConsoleHeader + MCDossierHero + SummaryPanel(MC) + 4 列 MC 按钮 + StepRow(MC)。
+//  数据流(@Query / SwiftData actions / SummaryPanelState)保持不变。
 //
 
 import SwiftUI
@@ -17,10 +17,15 @@ struct AgentDetailView: View {
     let taskID: UUID
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     @Query private var tasks: [AgentTask]
 
+    // AI 摘要为 V1.1 功能(Apple Intelligence FoundationModels),V1.0 发布构建隐藏入口。
+    // 代码保留;把 BARKAGENT_AI_SUMMARY 加进 build settings 即可复活。
+    #if BARKAGENT_AI_SUMMARY
     @State private var summaryState: SummaryPanelState = .ready
+    #endif
 
     init(taskID: UUID) {
         self.taskID = taskID
@@ -41,47 +46,88 @@ struct AgentDetailView: View {
                 )
             }
         }
-        .background(MockScreenBackground())
-        .navigationTitle("Agent detail")
-        .navigationBarTitleDisplayMode(.inline)
+        .mcScreenBackground()
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     @ViewBuilder
     private func content(for task: AgentTask) -> some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                DetailHero(data: heroData(task))
-
-                actionRow(task)
-
-                SummaryPanel(state: summaryState, onSummarize: { startSummary(task) })
-
-                let steps = sortedSteps(task)
-                SectionTitle("Step History", trailing: "\(steps.count) pushes")
-
-                VStack(spacing: 10) {
-                    ForEach(steps) { step in
-                        StepRow(data: stepData(step))
+            VStack(alignment: .leading, spacing: 0) {
+                MCConsoleHeader(
+                    crumbs: ["OPS", "DOSSIER", task.taskID ?? task.id.uuidString.prefix(8).uppercased()],
+                    title: "Dossier"
+                ) {
+                    HStack(spacing: 8) {
+                        ShareLink(item: AgentShareSnippet.text(from: heroData(task))) {
+                            Text("⇪")
+                                .font(MissionControl.Font.jetBrainsMono(size: 13, weight: .bold))
+                                .foregroundStyle(MissionControl.Color.ink)
+                                .frame(width: 32, height: 32)
+                                .background(MissionControl.Color.hull)
+                                .overlay(
+                                    Rectangle()
+                                        .stroke(MissionControl.Color.ruleHot,
+                                                lineWidth: MissionControl.Border.hairline)
+                                )
+                        }
+                        MCIconButton("←") { dismiss() }
                     }
                 }
+                .padding(.bottom, 14)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    MCDossierHero(data: heroData(task))
+
+                    #if BARKAGENT_AI_SUMMARY
+                    SummaryPanel(
+                        state: summaryState,
+                        onSummarize: { startSummary(task) },
+                        style: .missionControl
+                    )
+                    #endif
+
+                    actionRow(task)
+
+                    let steps = sortedSteps(task)
+                    MCSectionHeader("Step log", trailing: pushesLabel(steps.count))
+
+                    VStack(spacing: 0) {
+                        ForEach(steps) { step in
+                            StepRow(data: stepData(step), style: .missionControl)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 10)
-            .padding(.bottom, 30)
         }
     }
 
     @ViewBuilder
     private func actionRow(_ task: AgentTask) -> some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
             Button(task.isPinned ? "Unpin" : "Pin") { togglePin(task) }
+                .buttonStyle(MCGhostButtonStyle())
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("agent-detail-pin")
             Button(task.isMuted ? "Unmute" : "Mute") { toggleMute(task) }
+                .buttonStyle(MCGhostButtonStyle())
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("agent-detail-mute")
             Button("Archive") { archive(task) }
-            Button("Mark done") { markDone(task) }
-                .tint(BarkTheme.Palette.errorRed)
+                .buttonStyle(MCGhostButtonStyle())
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("agent-detail-archive")
+            Button("Done") { markDone(task) }
+                .buttonStyle(MCPrimaryButtonStyle())
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("agent-detail-done")
         }
-        .buttonStyle(SecondaryCapsuleButtonStyle())
-        .font(.caption.weight(.heavy))
+    }
+
+    private func pushesLabel(_ n: Int) -> String {
+        n < 10 ? "0\(n) pushes" : "\(n) pushes"
     }
 
     // MARK: - View-model
@@ -90,11 +136,17 @@ struct AgentDetailView: View {
         DetailHeroData(
             status: task.status,
             agentName: task.displayName,
-            taskID: task.taskID,
+            taskID: codeLine(for: task),
             progressLabel: task.progress ?? "—",
-            etaLabel: AgentCardData.etaLabel(from: task.eta) ?? task.status.label,
+            etaLabel: AgentCardData.etaLabel(from: task.eta) ?? "—",
             updatedLabel: AgentCardData.relativeLabel(from: task.updatedAt)
         )
+    }
+
+    private func codeLine(for task: AgentTask) -> String? {
+        var segments: [String] = []
+        if let taskID = task.taskID { segments.append(taskID) }
+        return segments.isEmpty ? nil : segments.joined(separator: " · ")
     }
 
     private func sortedSteps(_ task: AgentTask) -> [AgentStep] {
@@ -143,6 +195,7 @@ struct AgentDetailView: View {
         try? modelContext.save()
     }
 
+    #if BARKAGENT_AI_SUMMARY
     private func startSummary(_ task: AgentTask) {
         // Phase 6 实际接 FoundationModels。此处仅做三态切换占位。
         withAnimation(.easeInOut(duration: 0.2)) { summaryState = .loading }
@@ -155,4 +208,5 @@ struct AgentDetailView: View {
             }
         }
     }
+    #endif
 }
