@@ -58,8 +58,8 @@ describe('buildLiveActivityPayload', () => {
   });
 
   it('formats the liveactivity topic from bundle topic', () => {
-    expect(liveActivityTopic('com.barkmate.ios')).toBe(
-      'com.barkmate.ios.push-type.liveactivity',
+    expect(liveActivityTopic('com.barkagent.ios')).toBe(
+      'com.barkagent.ios.push-type.liveactivity',
     );
   });
 });
@@ -96,7 +96,7 @@ describe('POST /liveactivity/:token', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(capturedUrl).toBe(`${APNS_PRODUCTION_HOST}/3/device/${TEST_ACTIVITY_TOKEN}`);
     expect(capturedHeaders?.get('apns-topic')).toBe(
-      'com.barkmate.ios.push-type.liveactivity',
+      'com.barkagent.ios.push-type.liveactivity',
     );
     expect(capturedHeaders?.get('apns-push-type')).toBe('liveactivity');
     expect(capturedHeaders?.get('apns-priority')).toBe('10');

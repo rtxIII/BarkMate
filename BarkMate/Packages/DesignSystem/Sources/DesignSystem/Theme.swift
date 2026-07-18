@@ -2,7 +2,7 @@
 //  Theme.swift
 //  DesignSystem
 //
-//  BarkMate 的设计语言。所有视觉令牌的单一来源,Phase 3 mock 基线见
+//  BarkAgent 的设计语言。所有视觉令牌的单一来源,Phase 3 mock 基线见
 //  `App/Sources/Views/AgentMock/AgentMockPrototypeView.swift`。
 //
 

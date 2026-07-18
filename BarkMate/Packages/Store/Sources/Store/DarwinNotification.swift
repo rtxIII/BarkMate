@@ -21,9 +21,9 @@ public enum DarwinNotification {
         /// 通用刷新信号，不携带 payload；订阅方自行 fetch 最新数据。
         /// case 名 `itemDidArrive` 是 v0.2 Item-中心设计的命名遗物，
         /// 2.0.5 重命名 UI 时一并改为 `dataDidArrive`。
-        case itemDidArrive = "com.barkmate.darwin.itemDidArrive"
+        case itemDidArrive = "com.barkagent.darwin.itemDidArrive"
         /// Pending queue 有新任务。
-        case pendingTaskQueued = "com.barkmate.darwin.pendingTaskQueued"
+        case pendingTaskQueued = "com.barkagent.darwin.pendingTaskQueued"
     }
 
     /// 发送一个 Darwin notification（跨进程）。

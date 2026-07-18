@@ -16,6 +16,7 @@ public struct NotificationStatusBannerData: Equatable, Sendable {
         case authorizationDenied
         case apnsRegistrationFailed
         case serverUnreachable
+        case storageUnavailable
     }
 
     public let kind: Kind
@@ -76,6 +77,7 @@ public struct NotificationStatusBanner: View {
         case .authorizationDenied: return "bell.slash.fill"
         case .apnsRegistrationFailed: return "antenna.radiowaves.left.and.right.slash"
         case .serverUnreachable: return "exclamationmark.icloud.fill"
+        case .storageUnavailable: return "externaldrive.badge.exclamationmark"
         }
     }
 
@@ -84,6 +86,7 @@ public struct NotificationStatusBanner: View {
         case .authorizationDenied: return "Notifications disabled"
         case .apnsRegistrationFailed: return "APNs registration failed"
         case .serverUnreachable: return "Server unreachable"
+        case .storageUnavailable: return "Shared storage unavailable"
         }
     }
 
@@ -92,6 +95,7 @@ public struct NotificationStatusBanner: View {
         case .authorizationDenied: return BarkTheme.Palette.warningYellow
         case .apnsRegistrationFailed: return BarkTheme.Palette.alertOrange
         case .serverUnreachable: return BarkTheme.Palette.errorRed
+        case .storageUnavailable: return BarkTheme.Palette.errorRed
         }
     }
 }
@@ -101,7 +105,7 @@ public struct NotificationStatusBanner: View {
         NotificationStatusBanner(
             data: .init(
                 kind: .authorizationDenied,
-                detail: "Notifications were denied. Open Settings → BarkMate.",
+                detail: "Notifications were denied. Open Settings → BarkAgent.",
                 actionLabel: "Open"
             ),
             onAction: {}
@@ -117,7 +121,7 @@ public struct NotificationStatusBanner: View {
         NotificationStatusBanner(
             data: .init(
                 kind: .serverUnreachable,
-                detail: "BarkMate Cloud failed to register. Open Servers to retry.",
+                detail: "BarkAgent Cloud failed to register. Open Servers to retry.",
                 actionLabel: "Servers"
             ),
             onAction: {}

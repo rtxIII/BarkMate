@@ -1,6 +1,6 @@
 name: BarkMate
 options:
-  bundleIdPrefix: com.barkmate
+  bundleIdPrefix: com.barkagent
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
@@ -13,14 +13,19 @@ configs:
 
 settings:
   base:
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: "STLD27C5KT"
     SWIFT_VERSION: "5.10"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     SWIFT_STRICT_CONCURRENCY: complete
     GENERATE_INFOPLIST_FILE: NO
-    CURRENT_PROJECT_VERSION: "1"
-    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "5"
+    MARKETING_VERSION: "1.0.0"
     CODE_SIGN_STYLE: Automatic
+  configs:
+    Debug:
+      APS_ENVIRONMENT: development
+    Release:
+      APS_ENVIRONMENT: production
 
 packages:
   Models:
@@ -48,17 +53,25 @@ targets:
     platform: iOS
     sources:
       - path: App/Sources
-    resources:
       - path: App/Resources
-        optional: true
+      - path: Shared/Sounds
+        excludes:
+          - "LICENSE-sounds.md"
     info:
       path: App/Info.plist
       properties:
         AppIdentifierPrefix: $(AppIdentifierPrefix)
-        CFBundleDisplayName: BarkMate
+        CFBundleDisplayName: BarkAgent
+        CFBundleIconName: AppIcon
+        LSApplicationCategoryType: public.app-category.developer-tools
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleLocalizations:
+          - en
+          - zh-Hans
+        ITSAppUsesNonExemptEncryption: false
         LSRequiresIPhoneOS: true
+        UIRequiresFullScreen: true
         UILaunchScreen:
           UIColorName: ""
           UIImageName: ""
@@ -68,24 +81,23 @@ targets:
           - arm64
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSUserNotificationsUsageDescription: "BarkMate needs to show notifications when new messages arrive."
-        NSPhotoLibraryUsageDescription: "BarkMate needs photo access to attach images to memos."
     entitlements:
       path: App/BarkMate.entitlements
       properties:
-        aps-environment: development
+        aps-environment: $(APS_ENVIRONMENT)
         com.apple.security.application-groups:
-          - group.com.barkmate.shared
+          - group.com.barkagent.shared
         keychain-access-groups:
-          - $(AppIdentifierPrefix)com.barkmate.shared
+          - $(AppIdentifierPrefix)com.barkagent.shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.barkmate.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.barkagent.ios
+        PRODUCT_NAME: BarkAgent
         TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: NO
     dependencies:
       - target: NotificationServiceExtension
-      - target: ShareExtension
       - target: BarkMateWidgets
       - package: Models
       - package: BarkService
@@ -102,11 +114,14 @@ targets:
     platform: iOS
     sources:
       - path: NotificationServiceExtension/Sources
+      - path: Shared/Sounds
+        excludes:
+          - "LICENSE-sounds.md"
     info:
       path: NotificationServiceExtension/Info.plist
       properties:
         AppIdentifierPrefix: $(AppIdentifierPrefix)
-        CFBundleDisplayName: BarkMate Notifications
+        CFBundleDisplayName: BarkAgent Notifications
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
@@ -116,55 +131,17 @@ targets:
       path: NotificationServiceExtension/NotificationService.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.com.barkmate.shared
+          - group.com.barkagent.shared
         keychain-access-groups:
-          - $(AppIdentifierPrefix)com.barkmate.shared
+          - $(AppIdentifierPrefix)com.barkagent.shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.barkmate.ios.NotificationServiceExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.barkagent.ios.NotificationServiceExtension
         TARGETED_DEVICE_FAMILY: "1,2"
     dependencies:
       - package: Models
       - package: BarkService
       - package: Store
-      - package: Factory
-
-  # =====================================================
-  # Share Extension
-  # =====================================================
-  ShareExtension:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: ShareExtension/Sources
-    info:
-      path: ShareExtension/Info.plist
-      properties:
-        AppIdentifierPrefix: $(AppIdentifierPrefix)
-        CFBundleDisplayName: Save to BarkMate
-        CFBundleShortVersionString: $(MARKETING_VERSION)
-        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        NSExtension:
-          NSExtensionPointIdentifier: com.apple.share-services
-          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
-          NSExtensionAttributes:
-            NSExtensionActivationRule:
-              NSExtensionActivationSupportsText: true
-              NSExtensionActivationSupportsWebURLWithMaxCount: 1
-              NSExtensionActivationSupportsImageWithMaxCount: 5
-    entitlements:
-      path: ShareExtension/ShareExtension.entitlements
-      properties:
-        com.apple.security.application-groups:
-          - group.com.barkmate.shared
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.barkmate.ios.ShareExtension
-        TARGETED_DEVICE_FAMILY: "1,2"
-    dependencies:
-      - package: Models
-      - package: Store
-      - package: BarkService
       - package: Factory
 
   # =====================================================
@@ -179,7 +156,7 @@ targets:
       path: Widgets/Info.plist
       properties:
         AppIdentifierPrefix: $(AppIdentifierPrefix)
-        CFBundleDisplayName: BarkMate Widgets
+        CFBundleDisplayName: BarkAgent Widgets
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
@@ -188,25 +165,66 @@ targets:
       path: Widgets/BarkMateWidgets.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.com.barkmate.shared
+          - group.com.barkagent.shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.barkmate.ios.Widgets
+        PRODUCT_BUNDLE_IDENTIFIER: com.barkagent.ios.Widgets
         TARGETED_DEVICE_FAMILY: "1,2"
     dependencies:
       - package: Models
       - package: Store
       - package: DesignSystem
 
+  # =====================================================
+  # App Tests
+  # =====================================================
+  BarkMateTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: App/Tests/BarkMateTests
+    settings:
+      base:
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.barkagent.ios.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/BarkAgent.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BarkAgent"
+    dependencies:
+      - target: BarkMate
+      - package: Models
+      - package: BarkService
+      - package: Store
+
+  # =====================================================
+  # App UI Tests
+  # =====================================================
+  BarkMateUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: App/UITests/BarkMateUITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.barkagent.ios.uitests
+        TEST_TARGET_NAME: BarkMate
+    dependencies:
+      - target: BarkMate
+
 schemes:
   BarkMate:
     build:
       targets:
         BarkMate: all
+        BarkMateTests: [test]
+        BarkMateUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
+      targets:
+        - BarkMateTests
+        - BarkMateUITests
     profile:
       config: Release
     analyze:

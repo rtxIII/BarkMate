@@ -69,6 +69,25 @@ final class AgentRouterTests: XCTestCase {
         XCTAssertEqual(ctx.aggregateKey, "default::task-x")
     }
 
+    func testAgentIDOverrideDrivesAggregateKey() {
+        // agent_id 存在时决定 agentID/aggregateKey,与 group 解耦。
+        let parsed = ParsedPush(
+            id: "msg-6",
+            body: "running",
+            group: "claude",
+            agentStatus: .running,
+            agentIDOverride: "claude:projA",
+            taskID: "sess-1"
+        )
+        let route = AgentRouter.route(parsed)
+        guard case .agent(let ctx) = route else {
+            XCTFail("expected agent route")
+            return
+        }
+        XCTAssertEqual(ctx.agentID, "claude:projA")
+        XCTAssertEqual(ctx.aggregateKey, "claude:projA::sess-1")
+    }
+
     func testAllAgentStatusValuesRoute() {
         for status in AgentStatus.allCases {
             let parsed = ParsedPush(

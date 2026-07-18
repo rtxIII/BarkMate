@@ -21,6 +21,9 @@ public enum NotificationStatusKind: String, Sendable, Equatable {
     case apnsRegistrationFailed
     /// 至少一个 server 注册/ping 失败,需要用户去 Setup 检查。
     case serverUnreachable
+    /// App Group 容器或 SwiftData 共享 store 不可用(entitlement 异常/Sandbox 同步延迟)。
+    /// 此时进入只读 in-memory 兜底,推送可显示但不归档,提示用户重装。
+    case storageUnavailable
 }
 
 public struct NotificationStatus: Sendable, Equatable {
@@ -46,7 +49,7 @@ public struct NotificationStatusStore: @unchecked Sendable {
     private static let detailKey = "notif.status.detail"
     private static let updatedAtKey = "notif.status.updatedAt"
     /// 状态变更跨视图通知名(供 SwiftUI .onReceive 监听)。
-    public static let didChangeNotification = Notification.Name("com.barkmate.notif.status.didChange")
+    public static let didChangeNotification = Notification.Name("com.barkagent.notif.status.didChange")
 
     private let defaults: UserDefaults
 

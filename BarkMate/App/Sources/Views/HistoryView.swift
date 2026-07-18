@@ -109,6 +109,7 @@ struct HistoryView: View {
             HStack(spacing: 6) {
                 ForEach(HistoryFilter.allCases) { f in
                     MCChip(f.title, isActive: filter == f) { filter = f }
+                        .accessibilityIdentifier("history-filter-\(f.rawValue)")
                 }
             }
         }

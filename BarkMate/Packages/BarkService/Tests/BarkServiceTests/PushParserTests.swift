@@ -76,6 +76,35 @@ final class PushParserTests: XCTestCase {
         XCTAssertEqual(parsed.agentID, "default")
     }
 
+    func testAgentIDPrefersExplicitAgentID() {
+        // agent_id 存在时优先于 group,让多 console(同 group)可按 agent_id 分卡。
+        let parsed = PushParser.parse(userInfo: [
+            "aps": ["alert": ["body": "x"]],
+            "agent_status": "running",
+            "agent_id": "claude:projA",
+            "group": "claude"
+        ])
+        XCTAssertEqual(parsed.agentID, "claude:projA")
+        XCTAssertEqual(parsed.group, "claude")
+    }
+
+    func testAgentIDFallsBackToGroupWhenAgentIDMissing() {
+        let parsed = PushParser.parse(userInfo: [
+            "aps": ["alert": ["body": "x"]],
+            "agent_status": "running",
+            "group": "work"
+        ])
+        XCTAssertEqual(parsed.agentID, "work")
+    }
+
+    func testAgentIDFallsBackToDefaultWhenBothMissing() {
+        let parsed = PushParser.parse(userInfo: [
+            "aps": ["alert": ["body": "x"]],
+            "agent_status": "running"
+        ])
+        XCTAssertEqual(parsed.agentID, "default")
+    }
+
     func testGeneratesStableIdWhenMissing() {
         // C2: id 缺失时,parser 用 payload 内容稳定哈希 → 同 payload 两次解析 id 相同。
         let userInfo: [AnyHashable: Any] = ["aps": ["alert": ["body": "x"]]]
@@ -112,6 +141,32 @@ final class PushParserTests: XCTestCase {
         let parsed = PushParser.parse(userInfo: [:])
         XCTAssertEqual(parsed.body, "")
         XCTAssertEqual(parsed.tags, [])
+    }
+
+    // MARK: - Codable backward-compat (PendingQueue on-disk data)
+
+    func testDecodesLegacyJSONWithoutAgentIDOverride() throws {
+        // 旧 PendingQueue 文件不含 agentIDOverride 键;新模型必须容忍缺失(解为 nil),
+        // agentID 退回 group,保持旧行为。防止未来加 CodingKeys 破坏离线队列兼容。
+        let legacy = #"{"id":"m1","body":"hi","bodyType":"plainText","tags":[],"group":"work","createdAt":768000000}"#
+        let data = Data(legacy.utf8)
+        let parsed = try JSONDecoder().decode(ParsedPush.self, from: data)
+        XCTAssertNil(parsed.agentIDOverride)
+        XCTAssertEqual(parsed.agentID, "work")
+    }
+
+    func testParsedPushRoundTripsThroughCodable() throws {
+        let original = PushParser.parse(userInfo: [
+            "aps": ["alert": ["body": "x"]],
+            "agent_status": "running",
+            "agent_id": "claude:projA",
+            "group": "claude",
+            "task_id": "sess-1"
+        ])
+        let data = try JSONEncoder().encode(original)
+        let restored = try JSONDecoder().decode(ParsedPush.self, from: data)
+        XCTAssertEqual(restored.agentIDOverride, "claude:projA")
+        XCTAssertEqual(restored.agentID, "claude:projA")
     }
 
     // MARK: - Tag extraction

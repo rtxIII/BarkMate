@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BarkMate · Mission Control</title>
+  <title>BarkAgent · Mission Control</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -326,6 +326,37 @@
       color: var(--ink-soft);
     }
 
+    .state-spec {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 14px;
+    }
+    .state-card {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid var(--rule-hot);
+      background: var(--void);
+    }
+    .state-card b {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 10px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--amber);
+    }
+    .state-card span {
+      display: block;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--ink-soft);
+    }
+    .state-card.danger { border-color: var(--magenta); }
+    .state-card.danger b { color: var(--magenta); }
+    .state-card.info { border-color: var(--cyan); }
+    .state-card.info b { color: var(--cyan); }
+
     /* ───── Phone frame ───── */
     .phone {
       position: relative;
@@ -449,14 +480,21 @@
       font-weight: 400;
       color: var(--amber);
     }
+    .hd-actions {
+      display: flex;
+      gap: 8px;
+    }
     .ic-btn {
-      width: 32px;
-      height: 32px;
+      width: 44px;
+      height: 44px;
+      padding: 0;
       display: grid;
       place-items: center;
+      appearance: none;
       border: 1px solid var(--rule-hot);
       background: var(--hull);
       color: var(--ink);
+      font-family: var(--mono);
       font-size: 13px;
       font-weight: 700;
       cursor: pointer;
@@ -472,6 +510,12 @@
       height: calc(100% - 100px - 60px);
       overflow: hidden;
       padding: 14px 16px 0;
+    }
+    #b-dashboard .content {
+      overflow-y: auto;
+      padding-bottom: 84px;
+      overscroll-behavior-y: contain;
+      -webkit-overflow-scrolling: touch;
     }
 
     /* ───── Tab bar (segmented terminal) ───── */
@@ -823,10 +867,11 @@
       margin-top: 12px;
     }
     .btn {
+      min-height: 44px;
       padding: 11px 8px;
       font-family: var(--mono);
       font-weight: 700;
-      font-size: 10px;
+      font-size: 11px;
       letter-spacing: .16em;
       text-transform: uppercase;
       cursor: pointer;
@@ -1080,10 +1125,14 @@
       border-bottom: 1px solid var(--rule);
     }
     .chip {
-      padding: 5px 9px;
+      min-height: 44px;
+      padding: 8px 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       border: 1px solid var(--rule-hot);
       background: var(--hull);
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 700;
       letter-spacing: .12em;
       text-transform: uppercase;
@@ -1167,7 +1216,12 @@
     @keyframes blink { 50% { opacity: 0; } }
     .s-input .clear {
       margin-left: auto;
-      font-size: 9px;
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      font-size: 10px;
       font-weight: 700;
       letter-spacing: .14em;
       text-transform: uppercase;
@@ -1303,25 +1357,66 @@
     .toggle {
       position: relative;
       width: 44px;
+      height: 44px;
+      padding: 0;
+      appearance: none;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+    .toggle::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 11px;
+      width: 44px;
       height: 22px;
       border: 1px solid var(--rule-hot);
       background: var(--hull);
-      cursor: pointer;
     }
     .toggle::before {
       content: "";
       position: absolute;
-      top: 2px;
+      z-index: 1;
+      top: 14px;
       left: 2px;
       width: 16px;
       height: 16px;
       background: var(--ink-soft);
       transition: all .25s ease;
     }
-    .toggle.on { background: var(--amber); border-color: var(--amber); }
+    .toggle.on { background: transparent; }
+    .toggle.on::after { background: var(--amber); border-color: var(--amber); }
     .toggle.on::before {
       transform: translateX(22px);
       background: var(--void);
+    }
+
+    .console-hd .crumbs,
+    .heads-up .head,
+    .sec-hd,
+    .a-card .meta,
+    .d-hero .code-line,
+    .summary-box .tag,
+    .step time,
+    .h-item .time,
+    .s-meta,
+    .s-res .kind,
+    .s-res time,
+    .seg-hd span,
+    .s-row .val {
+      font-size: 11px;
+    }
+    .screen .badge { font-size: 10px !important; }
+    .a-card .code-line,
+    .r-row .body small,
+    .d-metric span,
+    .h-item .time small,
+    .tabbar div,
+    .setup-hero .label,
+    .code-blk::before,
+    .s-row .val.on {
+      font-size: 10px;
     }
 
     /* ───── Live Activity ───── */
@@ -1478,7 +1573,7 @@
     <header class="masthead">
       <div class="term-bar">
         <div class="lights"><i></i><i></i><i></i></div>
-        <div class="title">BARKMATE / OPS / SCREEN-MOCK · v0.4</div>
+        <div class="title">BARKAGENT / OPS / SCREEN-MOCK · v0.4</div>
         <div class="right">
           <span>2026.06.15</span>
           <span>09:41:18 UTC+8</span>
@@ -1506,7 +1601,7 @@
             </div>
             <a class="tel-row" href="#b-setup">
               <span class="id">01</span>
-              <span class="label">Empty &amp; Setup</span>
+              <span class="label">One-line install</span>
               <span class="pg">P.01</span>
               <span class="st cfg">CFG</span>
             </a>
@@ -1557,9 +1652,15 @@
       <!-- ─── 01 SETUP ─── -->
       <article class="screen-block" id="b-setup">
         <div class="screen-meta">
-          <div class="crumbs"><span class="id">[01 / CFG]</span><span class="ts">first push · onboarding</span></div>
+          <div class="crumbs"><span class="id">[01 / CFG]</span><span class="ts">first push · one-line install</span></div>
           <h2>Empty &amp; <span class="serif">Setup</span></h2>
-          <p>Empty state 提供可复制 curl 与字段表，Setup 不再占 Tab，归入 Settings 内的接入向导。</p>
+          <p>一行脚本搞定 hook 接入：自动探测 Claude Code / Codex / OpenCode 的配置目录并注入 SessionStart / Stop / Notification hook；找不到则落到通用 <code>bark-push</code> CLI，自建 agent 直接调用。</p>
+          <div class="state-spec" role="list" aria-label="Setup recovery state variants">
+            <div class="state-card" role="listitem"><b>[ AUTH OFF ]</b><span>解释权限用途 · Open iOS Settings</span></div>
+            <div class="state-card danger" role="listitem"><b>[ APNS FAILED ]</b><span>保留错误详情 · Open Servers</span></div>
+            <div class="state-card danger" role="listitem"><b>[ SERVER DOWN ]</b><span>显示失败服务器 · Retry health check</span></div>
+            <div class="state-card danger" role="listitem"><b>[ STORAGE ]</b><span>说明临时内存模式 · Open recovery help</span></div>
+          </div>
         </div>
         <div class="phone"><div class="screen">
           <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
@@ -1567,32 +1668,33 @@
             <div class="crumbs"><span>SYS</span><span class="div">/</span><span class="seg">SETUP</span><span class="div">/</span><span>0001</span></div>
             <div class="row">
               <h3>First <span class="serif">push</span></h3>
-              <div class="ic-btn">?</div>
+              <button type="button" class="ic-btn" aria-label="Back to Settings" title="Back to Settings">←</button>
             </div>
           </div>
           <div class="content">
             <div class="setup-hero">
-              <span class="label">— Onboarding —</span>
-              <h4>One push.<br/>One <span class="serif">living</span> card.</h4>
-              <p>带上 agent_status + task_id，同任务原地更新，不堆成消息流。把 Bark 的推送能力折叠成可读的 agent 状态。</p>
+              <span class="label">— One-line install —</span>
+              <h4>One script.<br/>Every <span class="serif">agent</span> wired.</h4>
+              <p>跑一遍这段脚本，它会用你的 device key 自动配好 Claude Code / Codex / OpenCode 的 hook，自建 agent 留一个通用 <code>bark-push</code> 命令兼容。</p>
             </div>
             <div class="code-blk">
-              <span class="c">// curl template — copy &amp; ship</span><br/>
-              curl -X POST <span class="s">"https://api.day.app/&lt;key&gt;"</span> \<br/>
-              &nbsp;&nbsp;-d <span class="k">group</span>=<span class="s">backend-refactor</span> \<br/>
-              &nbsp;&nbsp;-d <span class="k">task_id</span>=<span class="s">auth-migration-0420</span> \<br/>
-              &nbsp;&nbsp;-d <span class="k">agent_status</span>=<span class="s">running</span> \<br/>
-              &nbsp;&nbsp;-d <span class="k">progress</span>=<span class="s">3/8</span>
+              <span class="c">// detects ~/.claude, ~/.codex, ~/.opencode and installs hooks</span><br/>
+              curl -fsSL <span class="s">"https://barkagent.we2.xyz/install.sh"</span> \<br/>
+              &nbsp;&nbsp;| <span class="k">BARK_KEY</span>=<span class="s">KXHpCVR-7bygYOAHhXNsIg</span> sh<br/>
+              <br/>
+              <span class="c">// or for one specific agent</span><br/>
+              barkmate install <span class="k">--agent</span>=<span class="s">claude</span> <span class="k">--key</span>=<span class="s">$BARK_KEY</span><br/>
+              <span class="c">// supported: claude · codex · opencode · custom</span>
             </div>
             <div class="btn-row">
-              <button class="btn">Copy curl</button>
-              <button class="btn ghost">Send demo</button>
+              <button class="btn">Copy install</button>
+              <button class="btn ghost">Send test push</button>
             </div>
             <div class="field-key">
-              <div class="row"><span class="k">group</span><span class="v">→ agent_id · 同一类 agent 的命名空间</span></div>
-              <div class="row"><span class="k">task_id</span><span class="v">→ 聚合键 · 决定是否原地更新</span></div>
-              <div class="row"><span class="k">agent_status</span><span class="v">running · waiting_input · blocked · done · failed</span></div>
-              <div class="row"><span class="k">legacy push</span><span class="v">不带 agent_status — 进入 History，不污染 Agents</span></div>
+              <div class="row"><span class="k">claude</span><span class="v">→ ~/.claude/settings.json · SessionStart + Stop + Notification</span></div>
+              <div class="row"><span class="k">codex</span><span class="v">→ ~/.codex/hooks.toml · on_start + on_complete + on_block</span></div>
+              <div class="row"><span class="k">opencode</span><span class="v">→ ~/.opencode/agents/*.yaml · event:* webhook</span></div>
+              <div class="row"><span class="k">custom</span><span class="v">→ /usr/local/bin/bark-push · POST agent_status/task_id/progress</span></div>
             </div>
           </div>
           <div class="tabbar">
@@ -1617,30 +1719,30 @@
             <div class="crumbs"><span>OPS</span><span class="div">/</span><span class="seg">TODAY</span><span class="div">/</span><span>MON · 0615</span></div>
             <div class="row">
               <h3><span class="serif">Today.</span></h3>
-              <div class="ic-btn">⌁</div>
+              <button type="button" class="ic-btn" aria-label="Send demo push" title="Send demo push">⌁</button>
             </div>
           </div>
           <div class="content">
             <div class="heads-up">
               <div class="head">
-                <span>— HEADS-UP / 06 AGENTS —</span>
+                <span>— HEADS-UP / 07 AGENTS —</span>
                 <span class="pulse"><i></i>LIVE</span>
               </div>
               <div class="triage">
                 <div class="tri-cell alert">
                   <span class="num">2</span>
                   <span class="lbl">Needs you</span>
-                  <span class="sub">wait + stuck</span>
+                  <span class="sub">wait input · stuck on token</span>
                 </div>
                 <div class="tri-cell run">
                   <span class="num">3</span>
                   <span class="lbl">Running</span>
-                  <span class="sub">quietly working</span>
+                  <span class="sub">02 CI · 01 agent</span>
                 </div>
                 <div class="tri-cell idle">
-                  <span class="num">1</span>
+                  <span class="num">2</span>
                   <span class="lbl">Settled</span>
-                  <span class="sub">done · 0 fail</span>
+                  <span class="sub">01 done · 01 fail</span>
                 </div>
               </div>
             </div>
@@ -1669,44 +1771,55 @@
               <div class="meta"><span>blocked 7m ago</span><span>02 / 05</span></div>
             </div>
 
-            <div class="sec-hd"><span class="lhs">Running</span><span class="rhs">03 agents</span></div>
+            <div class="sec-hd"><span class="lhs">Running</span><span class="rhs">03 · 02 CI · 01 agent</span></div>
+            <div class="r-row">
+              <span class="av">DP</span>
+              <div class="body">
+                <strong>deploy-prod</strong>
+                <small>CI pipeline · step 4/6 (migrate) · ETA 12m</small>
+              </div>
+              <div class="bar"><i style="width:67%"></i></div>
+              <span class="pct">4/6</span>
+            </div>
             <div class="r-row">
               <span class="av">BR</span>
               <div class="body">
                 <strong>backend-refactor</strong>
-                <small>auth-migration · refactoring middleware</small>
+                <small>Claude Code · auth-migration · 3/8 files</small>
               </div>
               <div class="bar"><i style="width:38%"></i></div>
               <span class="pct">38%</span>
             </div>
             <div class="r-row">
-              <span class="av">DU</span>
+              <span class="av">DR</span>
               <div class="body">
-                <strong>dependency-updater</strong>
-                <small>weekly-bump · installing packages</small>
+                <strong>nightly-build</strong>
+                <small>GitHub Actions · linting · ETA 4m</small>
               </div>
               <div class="bar"><i style="width:25%"></i></div>
               <span class="pct">25%</span>
             </div>
-            <div class="r-row">
-              <span class="av">DR</span>
-              <div class="body">
-                <strong>doc-renderer</strong>
-                <small>release-notes · drafting v0.4</small>
-              </div>
-              <div class="bar"><i style="width:66%"></i></div>
-              <span class="pct">66%</span>
-            </div>
 
-            <div class="sec-hd"><span class="lhs">Settled</span><span class="rhs">01</span></div>
+            <div class="sec-hd"><span class="lhs">Settled</span><span class="rhs">01 done · 01 fail</span></div>
             <div class="r-row done">
               <span class="av">ER</span>
               <div class="body">
                 <strong>e2e-runner</strong>
-                <small>checkout-flow · 06/06 passed</small>
+                <small>checkout-flow · 06/06 passed · 4m12s</small>
               </div>
               <div class="bar"><i style="width:100%"></i></div>
               <span class="pct">DONE</span>
+            </div>
+            <div class="a-card stuck" style="margin-top:10px">
+              <div class="top">
+                <div>
+                  <div class="who">scrape-<span class="serif">daily</span></div>
+                  <span class="code-line">n8n workflow · failed @ step 3/5 · 14m ago</span>
+                </div>
+                <span class="badge fail">[ FAIL ]</span>
+              </div>
+              <div class="ask">Node "Parse JSON" threw <code>SyntaxError</code> — upstream API returned 502. Retry or open run log.</div>
+              <div class="meta"><span>failed 14m ago</span><span>03 / 05</span></div>
             </div>
           </div>
           <div class="tabbar">
@@ -1731,7 +1844,10 @@
             <div class="crumbs"><span>OPS</span><span class="div">/</span><span class="seg">DOSSIER</span><span class="div">/</span><span>TASK-0420</span></div>
             <div class="row">
               <h3>Dossier</h3>
-              <div class="ic-btn">···</div>
+              <div class="hd-actions">
+                <button type="button" class="ic-btn" aria-label="Share agent summary" title="Share agent summary">⇪</button>
+                <button type="button" class="ic-btn" aria-label="Back to Agents" title="Back to Agents">←</button>
+              </div>
             </div>
           </div>
           <div class="content">
@@ -1798,9 +1914,9 @@
       <!-- ─── 04 HISTORY ─── -->
       <article class="screen-block" id="b-history">
         <div class="screen-meta">
-          <div class="crumbs"><span class="id">[04 / OK]</span><span class="ts">archive · memos</span></div>
+          <div class="crumbs"><span class="id">[04 / OK]</span><span class="ts">archive · stale · incoming</span></div>
           <h2>Archive &amp; <span class="serif">memos</span></h2>
-          <p>旧协议 Bark 推送、归档 AgentTask、用户 memo 同栏，按日期分组。</p>
+          <p>Agent 离开 Dashboard 之后的归宿：用户归档的 AgentTask、超时降级的 stale、不带 agent_status 的旧协议消息，按来源/状态分类。</p>
         </div>
         <div class="phone"><div class="screen">
           <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
@@ -1808,51 +1924,84 @@
             <div class="crumbs"><span>SYS</span><span class="div">/</span><span class="seg">HISTORY</span><span class="div">/</span><span>JUN · 2026</span></div>
             <div class="row">
               <h3>History</h3>
-              <div class="ic-btn">+</div>
+              <button type="button" class="ic-btn" aria-label="Create memo" title="Create memo">+</button>
             </div>
           </div>
           <div class="content">
-            <div class="h-banner">
-              <small>— OPS NOTE / 0615 —</small>
-              <h4>Messages become <span class="serif">context</span>, not noise.</h4>
+            <div class="heads-up" style="border-color:var(--orange)">
+              <div class="head">
+                <span>— STALE AGENTS / 02 —</span>
+                <span class="pulse" style="color:var(--orange)"><i style="background:var(--orange);box-shadow:0 0 8px var(--orange)"></i>STUCK</span>
+              </div>
+              <div class="a-card stuck" style="margin-bottom:0;border:0;padding:6px 0 8px;background:transparent">
+                <div class="top">
+                  <div>
+                    <div class="who" style="font-size:14px">log-<span class="serif">analyzer</span></div>
+                    <span class="code-line">last seen 47m ago · running · TASK-0418</span>
+                  </div>
+                  <span class="badge stale">[ STALE ]</span>
+                </div>
+              </div>
+              <div class="a-card stuck" style="margin-bottom:0;border:0;padding:8px 0 0;background:transparent;border-top:1px dashed var(--rule)">
+                <div class="top">
+                  <div>
+                    <div class="who" style="font-size:14px">ingest-<span class="serif">worker</span></div>
+                    <span class="code-line">last seen 02h 12m ago · running · TASK-0411</span>
+                  </div>
+                  <span class="badge stale">[ STALE ]</span>
+                </div>
+              </div>
             </div>
+
             <div class="chips">
               <span class="chip active">All</span>
               <span class="chip">Archived</span>
+              <span class="chip">Stale</span>
               <span class="chip">Incoming</span>
-              <span class="chip">Memos</span>
             </div>
 
-            <div class="sec-hd"><span class="lhs">Today</span><span class="rhs">02 items</span></div>
+            <div class="sec-hd"><span class="lhs">Today</span><span class="rhs">03 items</span></div>
             <div class="h-item">
               <div>
-                <strong>Build finished</strong>
-                <p>Legacy Bark — main branch build completed in 12m32s.</p>
+                <span class="badge done" style="font-size:8px;padding:2px 5px">[ AGT-DONE ]</span>
+                <strong style="margin-top:6px">api-cleanup</strong>
+                <p>Archived by user · 09 steps · 01 retry · auth-migration · final status done.</p>
+              </div>
+              <div class="time">08:02<small>archived</small></div>
+            </div>
+            <div class="h-item">
+              <div>
+                <span class="badge wait" style="font-size:8px;padding:2px 5px;color:var(--cyan);border-color:var(--cyan);background:var(--cyan-glow)">[ BARK ]</span>
+                <strong style="margin-top:6px">Build finished</strong>
+                <p>Legacy push · no agent_status · main branch · 12m 32s.</p>
               </div>
               <div class="time">09:14<small>incoming</small></div>
             </div>
             <div class="h-item">
               <div>
-                <strong>api-cleanup archived</strong>
-                <p>09 step pushes · 01 failed retry · marked done by user.</p>
+                <span class="badge stale" style="font-size:8px;padding:2px 5px">[ STALE ]</span>
+                <strong style="margin-top:6px">log-analyzer · auto-demoted</strong>
+                <p>Running &gt; 30 min without push · moved out of Dashboard.</p>
               </div>
-              <div class="time">08:02<small>agent</small></div>
+              <div class="time">08:54<small>stale</small></div>
             </div>
 
             <div class="sec-hd"><span class="lhs">Earlier · Jun 14</span><span class="rhs">02 items</span></div>
             <div class="h-item">
               <div>
-                <strong>Hook 接入备注</strong>
-                <p>Claude Code Stop hook 里追加 agent_status=done。</p>
+                <span class="badge done" style="font-size:8px;padding:2px 5px">[ AGT-DONE ]</span>
+                <strong style="margin-top:6px">weekly-bump</strong>
+                <p>Archived by user · 12 steps · all green · dependency-updater run.</p>
               </div>
-              <div class="time">22:48<small>memo</small></div>
+              <div class="time">22:48<small>archived</small></div>
             </div>
             <div class="h-item">
               <div>
-                <strong>Deploy preview link</strong>
-                <p>Saved from Share Extension placeholder.</p>
+                <span class="badge wait" style="font-size:8px;padding:2px 5px;color:var(--cyan);border-color:var(--cyan);background:var(--cyan-glow)">[ BARK ]</span>
+                <strong style="margin-top:6px">Deploy preview link</strong>
+                <p>Legacy push · no agent_status · staging url posted by hook.</p>
               </div>
-              <div class="time">16:12<small>memo</small></div>
+              <div class="time">16:12<small>incoming</small></div>
             </div>
           </div>
           <div class="tabbar">
@@ -1869,7 +2018,12 @@
         <div class="screen-meta">
           <div class="crumbs"><span class="id">[05 / RUN]</span><span class="ts">lookup · retrieval</span></div>
           <h2>Looking <span class="serif">up</span></h2>
-          <p>关键字优先，类型用三字母前缀区分（AGT / STP / MEM）。过滤折叠为可选 chip。</p>
+          <p>跨 agent step 历史全文搜索。空态给场景化快捷查询，输入态用类目（AGT / STP）+ status filter。</p>
+          <div class="state-spec" role="list" aria-label="Search state variants">
+            <div class="state-card info" role="listitem"><b>[ SEARCHING ]</b><span>保留查询与筛选条件 · 显示进度</span></div>
+            <div class="state-card" role="listitem"><b>[ NO HITS ]</b><span>解释当前过滤条件 · Reset filters</span></div>
+            <div class="state-card danger" role="listitem"><b>[ QUERY FAILED ]</b><span>保留用户输入 · Retry search</span></div>
+          </div>
         </div>
         <div class="phone"><div class="screen">
           <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
@@ -1877,7 +2031,7 @@
             <div class="crumbs"><span>SYS</span><span class="div">/</span><span class="seg">SEARCH</span><span class="div">/</span><span>q · "mock"</span></div>
             <div class="row">
               <h3>Search</h3>
-              <div class="ic-btn">⌘</div>
+              <button type="button" class="ic-btn" aria-label="Focus search field" title="Focus search field">⌘</button>
             </div>
           </div>
           <div class="content">
@@ -1887,46 +2041,60 @@
               <span class="caret"></span>
               <span class="clear">Clear</span>
             </div>
+
             <div class="chips" style="border-bottom:0;padding-top:10px">
               <span class="chip active">All</span>
               <span class="chip">Agents</span>
               <span class="chip">Steps</span>
-              <span class="chip">Memos</span>
+            </div>
+            <div class="chips" style="border-bottom:0;padding-top:0;padding-bottom:10px;border-top:1px dashed var(--rule)">
+              <span class="chip" style="color:var(--amber);border-color:var(--amber)">+ wait</span>
+              <span class="chip" style="color:var(--orange);border-color:var(--orange)">+ stuck</span>
+              <span class="chip" style="color:var(--magenta);border-color:var(--magenta)">+ fail</span>
+              <span class="chip">+ done</span>
             </div>
 
-            <div class="s-meta">— <span class="hit">04 hits</span> · last 7 days · sorted by relevance —</div>
+            <div class="s-meta">— <span class="hit">04 hits</span> · 02 agents · last 7 days · by relevance —</div>
 
             <div class="s-res">
               <span class="kind a">AGT</span>
               <div class="body">
-                <strong>test-writer</strong>
+                <strong>test-writer</strong><span class="badge wait" style="margin-left:6px;font-size:8px;padding:2px 5px">[ WAIT ]</span>
                 <p>等待确认是否覆盖现有 <em class="hit">mock</em>。</p>
               </div>
               <time>2m</time>
             </div>
-            <div class="s-res">
+            <div class="s-res" style="background:var(--hull);padding-left:8px;border-left:2px solid var(--cyan)">
               <span class="kind s">STP</span>
               <div class="body">
-                <strong>Generated new mock factories</strong>
-                <p>Prepared <em class="hit">mock</em> factories for API and clock dependencies.</p>
+                <strong>↳ Generated new mock factories</strong>
+                <p>Same task · TASK-0420 · prepared <em class="hit">mock</em> factories for API + clock.</p>
               </div>
               <time>10:21</time>
             </div>
-            <div class="s-res">
-              <span class="kind m">MEM</span>
-              <div class="body">
-                <strong>Hook 接入备注</strong>
-                <p>覆盖 <em class="hit">mock</em> 时把确认提示推为 waiting_input。</p>
-              </div>
-              <time>Jun 14</time>
-            </div>
-            <div class="s-res">
+            <div class="s-res" style="background:var(--hull);padding-left:8px;border-left:2px solid var(--cyan)">
               <span class="kind s">STP</span>
               <div class="body">
-                <strong>Confirm overwrite existing mocks</strong>
-                <p>The agent wants to replace existing test doubles.</p>
+                <strong>↳ Confirm overwrite existing mocks</strong>
+                <p>Same task · TASK-0420 · agent wants to replace test doubles.</p>
               </div>
               <time>10:31</time>
+            </div>
+            <div class="s-res">
+              <span class="kind a">AGT</span>
+              <div class="body">
+                <strong>backend-refactor</strong><span class="badge run" style="margin-left:6px;font-size:8px;padding:2px 5px">[ RUN ]</span>
+                <p>Replacing fetch <em class="hit">mock</em> in auth.test.ts (3/8 files).</p>
+              </div>
+              <time>5m</time>
+            </div>
+
+            <div class="sec-hd" style="margin-top:14px"><span class="lhs">Saved queries</span><span class="rhs">jump to</span></div>
+            <div class="chips" style="border-bottom:0;padding-top:6px;flex-wrap:wrap;gap:6px">
+              <span class="chip">Stuck on…</span>
+              <span class="chip">Fails · 7d</span>
+              <span class="chip">By agent ›</span>
+              <span class="chip">All wait</span>
             </div>
           </div>
           <div class="tabbar">
@@ -1943,7 +2111,7 @@
         <div class="screen-meta">
           <div class="crumbs"><span class="id">[06 / OK]</span><span class="ts">control · local-first</span></div>
           <h2>Settings, <span class="serif">tactical</span></h2>
-          <p>多服务器、stale 阈值、Time Sensitive、隐私边界、接入向导一处看完。</p>
+          <p>多服务器 APNs 健康度、Stale 阈值、告警/静音规则、Hooks 接入向导与上架必备的隐私声明一处看完。</p>
         </div>
         <div class="phone"><div class="screen">
           <div class="statusbar"><span>9:41</span><span class="signal"><i></i><i></i><i></i><b class="battery"></b></span></div>
@@ -1951,22 +2119,22 @@
             <div class="crumbs"><span>SYS</span><span class="div">/</span><span class="seg">SETTINGS</span></div>
             <div class="row">
               <h3>Settings</h3>
-              <div class="ic-btn">+</div>
+              <button type="button" class="ic-btn" aria-label="Manage servers" title="Manage servers">+</button>
             </div>
           </div>
           <div class="content">
-            <div class="seg-hd"><h5>Servers</h5><span>02 online</span></div>
+            <div class="seg-hd"><h5>Servers</h5><span>02 · apns ok</span></div>
             <div class="s-row">
               <div>
-                <strong>api.day.app</strong>
-                <p>Default · key synced · 320 pushes today</p>
+                <strong>barkagent.we2.xyz</strong>
+                <p>Default · APNs registered · last push 02m ago · 320 today</p>
               </div>
               <span class="val on">● online</span>
             </div>
             <div class="s-row">
               <div>
-                <strong>barkmate.we2.xyz</strong>
-                <p>Worker · v0.3 passthrough</p>
+                <strong>selfhost.example.com</strong>
+                <p>Worker · APNs registered · last push 11m ago · 47 today</p>
               </div>
               <span class="val on">● online</span>
             </div>
@@ -1975,23 +2143,48 @@
             <div class="s-row">
               <div>
                 <strong>Stale timeout</strong>
-                <p>Running tasks become stale after this window.</p>
+                <p>Running &gt; this window → auto-demote to History · Stale.</p>
               </div>
               <span class="val">30 min</span>
             </div>
-            <div class="s-row">
-              <div>
-                <strong>On-device summary</strong>
-                <p>Use Apple Intelligence when available.</p>
-              </div>
-              <span class="toggle on"></span>
-            </div>
+
+            <div class="seg-hd"><h5>Alerts</h5><span>02 rules</span></div>
             <div class="s-row">
               <div>
                 <strong>Time-Sensitive alerts</strong>
-                <p>wait · stuck · fail break quiet mode.</p>
+                <p>wait_input · blocked · failed break quiet mode.</p>
               </div>
-              <span class="toggle on"></span>
+              <button type="button" class="toggle on" role="switch" aria-checked="true" aria-label="Time-Sensitive alerts"></button>
+            </div>
+            <div class="s-row">
+              <div>
+                <strong>Mute rules</strong>
+                <p>02 active · by agent_id / status / server.</p>
+              </div>
+              <span class="val">manage ›</span>
+            </div>
+            <div class="s-row">
+              <div>
+                <strong>Alert sound</strong>
+                <p>Per-status override · default = system.</p>
+              </div>
+              <span class="val">default</span>
+            </div>
+
+            <div class="seg-hd"><h5>Hooks</h5><span>06 agents · 7d</span></div>
+            <div class="s-row">
+              <div>
+                <strong>Auto-installed</strong>
+                <p>Claude (Stop · Notification) · Codex (on_block) · OpenCode (event:*).</p>
+              </div>
+              <span class="val on">● active</span>
+            </div>
+            <div class="s-row">
+              <div>
+                <strong>Re-run installer</strong>
+                <p>One-line script · re-detects ~/.claude · ~/.codex · ~/.opencode.</p>
+              </div>
+              <span class="val">open ›</span>
             </div>
 
             <div class="seg-hd"><h5>Privacy</h5><span>local</span></div>
@@ -2004,10 +2197,10 @@
             </div>
             <div class="s-row">
               <div>
-                <strong>Setup guide</strong>
-                <p>接入向导 — curl template &amp; webhook 示例.</p>
+                <strong>Privacy policy</strong>
+                <p>Required by App Store · barkagent.we2.xyz/privacy.</p>
               </div>
-              <span class="val">open ›</span>
+              <span class="val">view ›</span>
             </div>
           </div>
           <div class="tabbar">

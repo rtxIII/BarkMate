@@ -1,6 +1,6 @@
 //
 //  AddServerView.swift
-//  BarkMate
+//  BarkAgent
 //
 //  Phase 4-Core: 添加服务器表单 + 测试连通性 + 注册 device token。
 //
@@ -38,10 +38,12 @@ struct AddServerView: View {
                 Section("Server") {
                     TextField("Display name (optional)", text: $name)
                         .autocorrectionDisabled()
+                        .accessibilityIdentifier("add-server-name")
                     TextField("https://api.example.com", text: $address)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .accessibilityIdentifier("add-server-address")
                 }
 
                 Section {
@@ -55,10 +57,11 @@ struct AddServerView: View {
                         }
                     }
                     .disabled(!isAddressValid || testState == .testing)
+                    .accessibilityIdentifier("add-server-test-connection")
                 }
 
                 Section {
-                    Text("BarkMate will register the APNs token to this server on save. The server will return a key used to push messages to your device.")
+                    Text("BarkAgent will register the APNs token to this server on save. The server will return a key used to push messages to your device.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -68,10 +71,12 @@ struct AddServerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("add-server-cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await save() } }
                         .disabled(!isAddressValid || saving)
+                        .accessibilityIdentifier("add-server-save")
                 }
             }
         }

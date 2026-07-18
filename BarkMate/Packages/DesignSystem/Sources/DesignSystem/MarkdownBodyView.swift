@@ -31,13 +31,13 @@ public struct MarkdownBodyView: View {
                 .multilineTextAlignment(.leading)
         case .markdown:
             Markdown(rawBody)
-                .markdownTheme(barkmateTheme)
+                .markdownTheme(barkAgentTheme)
                 .lineLimit(lineLimit)
         }
     }
 
     @MainActor
-    private var barkmateTheme: Theme {
+    private var barkAgentTheme: Theme {
         Theme.gitHub
             .text {
                 ForegroundColor(.primary)

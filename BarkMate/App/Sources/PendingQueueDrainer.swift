@@ -1,6 +1,6 @@
 //
 //  PendingQueueDrainer.swift
-//  BarkMate
+//  BarkAgent
 //
 //  主 App 侧：启动时 + 收到 Darwin 通知时扫描 PendingQueue，逐条归档。
 //  Extension 写 SwiftData 失败走的旁路，在此消费。
@@ -20,9 +20,9 @@ final class PendingQueueDrainer {
     private let archiver: PushArchiver
     private var darwinObserver: DarwinObserver?
 
-    nonisolated init(modelContainer: ModelContainer) {
+    nonisolated init(modelContainer: ModelContainer, pendingQueueBaseDirectory: URL? = nil) {
         self.modelContainer = modelContainer
-        self.queue = PendingQueue()
+        self.queue = PendingQueue(baseDirectory: pendingQueueBaseDirectory)
         self.archiver = PushArchiver(modelContainer: modelContainer)
     }
 
@@ -40,19 +40,20 @@ final class PendingQueueDrainer {
 
     func drain() async {
         do {
-            let pending = try queue.drain()
+            let pending = try queue.pendingMessages()
             if pending.isEmpty { return }
 
             for parsed in pending {
                 do {
                     try archiver.archive(parsed)
+                    try queue.acknowledge(parsed)
                 } catch {
-                    print("[Drainer] archive failed for \(parsed.id): \(error.localizedDescription)")
+                    BarkLog.storage.error("drainer archive failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
-            print("[Drainer] drained \(pending.count) pending message(s)")
+            dprint("[Drainer] processed \(pending.count) pending message(s)")
         } catch {
-            print("[Drainer] drain failed: \(error.localizedDescription)")
+            BarkLog.storage.error("drain failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

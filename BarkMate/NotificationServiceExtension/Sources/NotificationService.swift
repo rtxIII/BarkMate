@@ -12,11 +12,14 @@
 
 import UserNotifications
 import SwiftData
+import os
 import Models
 import Store
 import BarkService
 
 final class NotificationService: UNNotificationServiceExtension {
+
+    private static let log = Logger(subsystem: "com.barkagent.ios", category: "nse")
 
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var bestAttemptContent: UNMutableNotificationContent?
@@ -47,7 +50,7 @@ final class NotificationService: UNNotificationServiceExtension {
         do {
             container = try SharedModelContainer.make()
         } catch {
-            NSLog("[BarkMate] SharedModelContainer.make failed: \(error.localizedDescription)")
+            Self.log.error("SharedModelContainer.make failed: \(error.localizedDescription, privacy: .public)")
             container = nil
         }
 
@@ -59,13 +62,14 @@ final class NotificationService: UNNotificationServiceExtension {
         )
 
         applyDecrypted(content: content, from: outcome.decryptResult)
+        applyAlertSound(content: content, from: outcome.decryptResult)
         await ImageEnricher().attachImageIfNeeded(userInfo: outcome.decryptResult.userInfo, to: content)
 
         switch outcome {
         case .archived, .pending:
             DarwinNotification.post(.itemDidArrive)
         case .dropped(_, _, let error):
-            NSLog("[BarkMate] push dropped (archive + pending both failed): \(error.localizedDescription)")
+            Self.log.error("push dropped (archive + pending both failed): \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -95,5 +99,20 @@ final class NotificationService: UNNotificationServiceExtension {
         if let subtitle = alert["subtitle"] as? String { content.subtitle = subtitle }
         if let body = alert["body"] as? String { content.body = body }
         content.userInfo = result.userInfo
+    }
+
+    /// 按用户 per-status 声音偏好覆写 content.sound。未配置则不动(保留发送方声音)。
+    private func applyAlertSound(
+        content: UNMutableNotificationContent,
+        from result: DecryptProcessor.DecryptResult
+    ) {
+        switch AlertSoundResolver.decide(userInfo: result.userInfo) {
+        case .keep:
+            break
+        case .silence:
+            content.sound = nil
+        case .named(let fileName):
+            content.sound = UNNotificationSound(named: UNNotificationSoundName(fileName))
+        }
     }
 }

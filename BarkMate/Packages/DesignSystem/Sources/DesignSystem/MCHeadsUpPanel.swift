@@ -26,7 +26,7 @@ public struct MCHeadsUpPanel: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("— HEADS-UP / \(activeLabel) AGENTS —")
+                Text("— HEADS-UP / \(displayedTotalLabel) AGENTS —")
                 Spacer()
                 MCLivePulse()
             }
@@ -60,9 +60,9 @@ public struct MCHeadsUpPanel: View {
         counts.done + counts.failed
     }
 
-    private var activeLabel: String {
-        let n = counts.active
-        return n < 10 ? "0\(n)" : "\(n)"
+    private var displayedTotalLabel: String {
+        let displayedTotal = needsYouCount + runningCount + settledCount
+        return displayedTotal < 10 ? "0\(displayedTotal)" : "\(displayedTotal)"
     }
 
     /// "01 wait · 01 stuck"(只列非零项)。0 → "—"。

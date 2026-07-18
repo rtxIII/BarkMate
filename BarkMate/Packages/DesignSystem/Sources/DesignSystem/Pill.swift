@@ -39,3 +39,42 @@ public struct Pill: View {
     .padding()
     .background(BarkTheme.Palette.paperHot)
 }
+
+// MARK: - Mission Control variant
+//
+// 给任意 Text/View 套上 Mission Control 风格 pill 外观:
+//   - bodyMono(11pt) 字 + 0.8 字距 + uppercase
+//   - inkSoft 字色 + 锐角 + 1pt ruleHot 描边
+//
+// 不修改 `Pill` 结构体本身,避免影响暖纸主题旧调用方。
+//
+// 用法:
+//   Text("agent").mcPill()
+//
+
+extension View {
+    /// Mission Control 风格 pill 包装(锐角 + ruleHot 描边 + bodyMono)。
+    public func mcPill() -> some View {
+        self
+            .font(MissionControl.Font.bodyMono)
+            .textCase(.uppercase)
+            .tracking(0.8)
+            .foregroundStyle(MissionControl.Color.inkSoft)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .overlay(
+                Rectangle()
+                    .stroke(MissionControl.Color.ruleHot, lineWidth: MissionControl.Border.hairline)
+            )
+    }
+}
+
+#Preview("Mission Control pill") {
+    HStack(spacing: 8) {
+        Text("agent").mcPill()
+        Text("first push").mcPill()
+        Text("0420").mcPill()
+    }
+    .padding()
+    .background(MissionControl.Color.void)
+}

@@ -5,7 +5,7 @@
 //  共享 Keychain 封装。主 App 与 NotificationServiceExtension 通过
 //  `kSecAttrAccessGroup` 共享加密密钥；附件/小组件 target 不涉及密钥读取。
 //
-//  accessGroup 需使用完整值 `<TeamID>.group.com.barkmate.shared`；
+//  accessGroup 需使用完整值 `<TeamID>.com.barkagent.shared`；
 //  Team ID 运行时由调用方注入（见 `Configuration`），避免硬编码。
 //
 
@@ -26,7 +26,7 @@ public enum KeychainService {
 
         /// 生产配置：需调用方在启动时注入 Team ID。
         public static func shared(teamID: String) -> Configuration {
-            Configuration(accessGroup: "\(teamID).group.com.barkmate.shared")
+            Configuration(accessGroup: "\(teamID).com.barkagent.shared")
         }
 
         /// 测试/预览配置：不使用 access group，走本地 keychain。

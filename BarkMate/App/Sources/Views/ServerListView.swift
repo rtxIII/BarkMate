@@ -1,6 +1,6 @@
 //
 //  ServerListView.swift
-//  BarkMate
+//  BarkAgent
 //
 //  Phase 4-Core: 服务器列表 + 状态点 + 添加 + 删除 + 健康检查刷新。
 //
@@ -55,6 +55,7 @@ struct ServerListView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .accessibilityIdentifier("server-list-add")
             }
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -63,6 +64,7 @@ struct ServerListView: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .disabled(servers.isEmpty)
+                .accessibilityIdentifier("server-list-refresh")
             }
         }
         .sheet(isPresented: $showingAdd) {

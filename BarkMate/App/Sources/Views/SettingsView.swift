@@ -17,13 +17,19 @@ import DesignSystem
 struct SettingsView: View {
 
     @Injected(\.deviceTokenStore) private var tokenStore: DeviceTokenStore
+    @Injected(\.alertSoundStore) private var alertSoundStore: AlertSoundStore
 
     @Query(sort: \Server.createdAt, order: .reverse)
     private var servers: [Server]
 
+    // Hooks 徽标的弱代理信号:app 无法直接探测开发机上的 hook 是否装好,
+    // 以"是否收到过 ≥1 条 agent 推送"作为可靠的设备端间接证据。
+    @Query private var agentTasks: [AgentTask]
+
     @State private var timeSensitiveAlerts: Bool = true
     @State private var showSetupGuide: Bool = false
     @State private var showServerList: Bool = false
+    @State private var showSoundPicker: Bool = false
 
     @EnvironmentObject private var selectedTab: SelectedTab
 
@@ -35,6 +41,7 @@ struct SettingsView: View {
                     title: "Settings"
                 ) {
                     MCIconButton("+") { showServerList = true }
+                        .accessibilityIdentifier("settings-server-list-shortcut")
                 }
                 .padding(.bottom, 14)
 
@@ -55,6 +62,7 @@ struct SettingsView: View {
                         ) { MCSettingValue("open") }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-manage-servers")
 
                     MCSectionHeader("Agent behavior", trailing: "defaults")
                     MCSettingRow(
@@ -69,21 +77,21 @@ struct SettingsView: View {
                     ) {
                         MCToggle(isOn: $timeSensitiveAlerts, label: "Time-Sensitive alerts")
                     }
-                    MCSettingRow(
-                        title: "Mute rules",
-                        detail: "By agent_id / status / server. (Coming soon)"
-                    ) { MCSettingValue("manage ›", tone: .dim) }
-                    MCSettingRow(
-                        title: "Alert sound",
-                        detail: "Per-status override · default = system."
-                    ) { MCSettingValue("default") }
+                    Button { showSoundPicker = true } label: {
+                        MCSettingRow(
+                            title: "Alert sound",
+                            detail: "Per-status override · default = system."
+                        ) { MCSettingValue(globalSoundLabel) }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-alert-sound")
 
                     MCSectionHeader("Hooks", trailing: "agent integration")
                     MCSettingRow(
                         title: "Auto-installed",
-                        detail: "Claude (Stop · Notification) · Codex (on_block) · OpenCode (event:*)."
+                        detail: hooksDetail
                     ) {
-                        MCSettingStateBadge("active", color: MissionControl.Color.lime)
+                        MCSettingStateBadge(hooksBadgeText, color: hooksBadgeColor)
                     }
                     Button { showSetupGuide = true } label: {
                         MCSettingRow(
@@ -92,6 +100,7 @@ struct SettingsView: View {
                         ) { MCSettingValue("open ›") }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-rerun-installer")
 
                     MCSectionHeader("Privacy", trailing: "local")
                     MCSettingRow(
@@ -100,7 +109,7 @@ struct SettingsView: View {
                     ) { MCSettingValue("off", tone: .dim) }
                     MCSettingRow(
                         title: "Privacy policy",
-                        detail: "Required by App Store · barkmate.app/privacy."
+                        detail: "Required by App Store · barkagent.we2.xyz/privacy."
                     ) { MCSettingValue("view ›", tone: .dim) }
 
                     MCSectionHeader("Device", trailing: "APNs")
@@ -132,6 +141,9 @@ struct SettingsView: View {
         .navigationDestination(isPresented: $showServerList) {
             ServerListView()
         }
+        .navigationDestination(isPresented: $showSoundPicker) {
+            AlertSoundPickerView()
+        }
         .onAppear { consumePendingDeepLinkIfNeeded() }
         .onChange(of: selectedTab.pendingDeepLink) { _, _ in
             consumePendingDeepLinkIfNeeded()
@@ -144,6 +156,27 @@ struct SettingsView: View {
         guard selectedTab.pendingDeepLink == .setupGuide else { return }
         showSetupGuide = true
         selectedTab.pendingDeepLink = nil
+    }
+
+    // MARK: - Hooks 徽标(弱代理信号)
+
+    /// 收到过 ≥1 条 agent 推送即视为 hook 已在某处生效。
+    private var hasReceivedAgentPush: Bool {
+        !agentTasks.isEmpty
+    }
+
+    private var hooksBadgeText: String {
+        hasReceivedAgentPush ? "active" : "setup"
+    }
+
+    private var hooksBadgeColor: Color {
+        hasReceivedAgentPush ? MissionControl.Color.lime : MissionControl.Color.inkSoft
+    }
+
+    private var hooksDetail: String {
+        hasReceivedAgentPush
+            ? "Claude (Stop · Notification) · Codex (on_block) · OpenCode (event:*)."
+            : "Run the install script on your machine to wire up Claude / Codex / OpenCode."
     }
 
     private var serversTrailing: String {
@@ -181,6 +214,14 @@ struct SettingsView: View {
         guard let token = tokenStore.token() else { return "Not yet registered" }
         if token.count <= 16 { return token }
         return "\(token.prefix(8))…\(token.suffix(8))"
+    }
+
+    private var globalSoundLabel: String {
+        guard
+            let id = alertSoundStore.globalDefaultID(),
+            let sound = SoundCatalog.sound(for: id)
+        else { return "default" }
+        return sound.displayName.lowercased()
     }
 
     private var appVersion: String {

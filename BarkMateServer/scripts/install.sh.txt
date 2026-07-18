@@ -1,0 +1,511 @@
+#!/usr/bin/env bash
+#
+# BarkMate — one-line hook installer
+#
+# Usage:
+#   curl -fsSL https://barkagent.we2.xyz/install.sh | BARK_KEY=xxxx sh
+#   curl -fsSL https://barkagent.we2.xyz/install.sh | BARK_KEY=xxxx BARK_SERVER=https://barkagent.we2.xyz sh
+#
+# What it does:
+#   1. Drops /usr/local/bin/bark-push (or ~/.local/bin/bark-push) — the canonical
+#      CLI that every hook calls. Self-built agents stop here.
+#   2. Auto-detects ~/.claude, ~/.codex, ~/.opencode and wires the *real*
+#      hook surface each tool exposes:
+#        Claude Code → Notification + Stop  (stdin JSON via jq)
+#        Codex CLI   → notify in config.toml + PermissionRequest in hooks.json
+#        OpenCode    → TS plugin in .opencode/plugins + opencode.json register
+#   3. Skips silently if a target tool is not installed. Re-running is safe.
+#
+# Env:
+#   BARK_KEY      device key from BarkMate iOS app (required)
+#   BARK_SERVER   override push endpoint, default https://barkagent.we2.xyz
+#   BARK_PREFIX   override install prefix for bark-push (default /usr/local/bin
+#                 if writable, else ~/.local/bin)
+#
+# License: MIT
+
+set -eu
+
+# ── styling ──────────────────────────────────────────────────────────────────
+RESET='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
+OK='\033[1;32m'; WARN='\033[1;33m'; ERR='\033[1;31m'; INFO='\033[1;36m'
+say()  { printf '%b\n' "$*"; }
+ok()   { say "${OK}✓${RESET} $*"; }
+warn() { say "${WARN}!${RESET} $*"; }
+die()  { say "${ERR}✗${RESET} $*" >&2; exit 1; }
+step() { say "${INFO}▸${RESET} ${BOLD}$*${RESET}"; }
+
+# ── preflight ────────────────────────────────────────────────────────────────
+BARK_KEY="${BARK_KEY:-}"
+BARK_SERVER="${BARK_SERVER:-https://barkagent.we2.xyz}"
+
+[ -z "${BARK_KEY}" ] && die "BARK_KEY not set. Open BarkMate → Settings → Servers → copy device key, then re-run with BARK_KEY=xxxx sh"
+
+case "${BARK_SERVER}" in
+  https://*|http://*) : ;;
+  *) die "BARK_SERVER must start with http(s):// (got: ${BARK_SERVER})" ;;
+esac
+
+command -v curl >/dev/null 2>&1 || die "curl is required"
+HAS_JQ=0; command -v jq >/dev/null 2>&1 && HAS_JQ=1
+
+# Escape a value for safe embedding inside a bash double-quoted string
+# (handles the 4 chars bash interprets inside ""): \  "  `  $
+dq_escape() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\$/g'
+}
+BARK_KEY_ESC="$(dq_escape "${BARK_KEY}")"
+BARK_SERVER_ESC="$(dq_escape "${BARK_SERVER}")"
+
+# ── pick install prefix ──────────────────────────────────────────────────────
+if [ -n "${BARK_PREFIX:-}" ]; then
+  PREFIX="${BARK_PREFIX}"
+elif [ -w /usr/local/bin ] 2>/dev/null; then
+  PREFIX="/usr/local/bin"
+else
+  PREFIX="${HOME}/.local/bin"
+fi
+mkdir -p "${PREFIX}"
+BARK_PUSH="${PREFIX}/bark-push"
+
+case ":${PATH}:" in
+  *":${PREFIX}:"*) ;;
+  *) warn "${PREFIX} is not on PATH. Add: export PATH=\"${PREFIX}:\$PATH\"" ;;
+esac
+
+# ── write bark-push CLI ──────────────────────────────────────────────────────
+step "Installing bark-push → ${BARK_PUSH}"
+
+cat > "${BARK_PUSH}" <<BARKPUSH
+#!/usr/bin/env bash
+# bark-push — generic BarkMate dispatcher.
+#
+# Three calling shapes:
+#
+#   1) Direct flags (self-built agents):
+#      bark-push --agent backend --task auth-0420 --status running \\
+#                --progress 3/8 --title "Refactor auth"
+#
+#   2) Claude Code / Codex hooks (read JSON from stdin):
+#      <stdin JSON> | bark-push --from claude   # Notification or Stop event
+#      <stdin JSON> | bark-push --from codex    # SessionStart/PermissionRequest/Stop
+#
+#   3) Codex \`notify\` shim (takes JSON as the single argv):
+#      bark-push --from codex-notify '{"type":"agent-turn-complete",...}'
+#
+# Status mapping the adapters use:
+#   Claude  Notification → waiting_input ; Stop → done
+#   Codex   SessionStart→running ; PermissionRequest→waiting_input ; Stop→done
+#   Codex notify (agent-turn-complete) → done
+#   OpenCode (handled by TS plugin, calls bark-push with direct flags)
+
+set -eu
+KEY="\${BARK_KEY:-${BARK_KEY_ESC}}"
+SERVER="\${BARK_SERVER:-${BARK_SERVER_ESC}}"
+
+AGENT=""; TASK=""; STATUS=""; PROGRESS=""; ETA=""
+TITLE=""; BODY=""; GROUP=""; LEVEL=""; SOUND=""; ICON=""
+FROM=""; ARGV_JSON=""
+
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    --from)     FROM="\$2"; shift 2 ;;
+    --agent)    AGENT="\$2"; shift 2 ;;
+    --task)     TASK="\$2"; shift 2 ;;
+    --status)   STATUS="\$2"; shift 2 ;;
+    --progress) PROGRESS="\$2"; shift 2 ;;
+    --eta)      ETA="\$2"; shift 2 ;;
+    --title)    TITLE="\$2"; shift 2 ;;
+    --body)     BODY="\$2"; shift 2 ;;
+    --group)    GROUP="\$2"; shift 2 ;;
+    --level)    LEVEL="\$2"; shift 2 ;;
+    --sound)    SOUND="\$2"; shift 2 ;;
+    --icon)     ICON="\$2"; shift 2 ;;
+    -h|--help)
+      grep '^#' "\$0" | sed 's/^# \\{0,1\\}//' ; exit 0 ;;
+    *) ARGV_JSON="\$1"; shift ;;
+  esac
+done
+
+# ── adapter: parse stdin/argv JSON when --from is given ─────────────────────
+if [ -n "\${FROM}" ]; then
+  command -v jq >/dev/null 2>&1 || { echo "bark-push: jq required for --from adapter" >&2; exit 70; }
+
+  case "\${FROM}" in
+    codex-notify)
+      RAW="\${ARGV_JSON}"
+      ;;
+    *)
+      RAW="\$(cat)"
+      ;;
+  esac
+
+  # Empty stdin still produces "null" from jq; tolerate it.
+  [ -z "\${RAW}" ] && RAW='{}'
+
+  jq_get() { printf '%s' "\${RAW}" | jq -r "\$1 // empty" 2>/dev/null || true; }
+
+  case "\${FROM}" in
+    claude)
+      # Stdin shape varies by event. We detect via hook_event_name when present
+      # (Claude Code sends it on newer builds), otherwise inspect available keys.
+      EVT="\$(jq_get '.hook_event_name')"
+      [ -z "\${EVT}" ] && EVT="\$(jq_get '.event')"
+      # Project name from cwd → agent_id/group become "claude:<proj>" so multiple
+      # consoles in different projects stay separate on the dashboard (distinct
+      # aggregateKey) and notifications thread per project. Falls back to bare
+      # "claude" when cwd is absent (older hook builds).
+      CWD="\$(jq_get '.cwd')"
+      PROJ=""
+      if [ -n "\${CWD}" ]; then
+        PROJ="\$(basename "\${CWD}" 2>/dev/null)" || PROJ=""
+        # ':' is the aggregateKey separator on the client — strip it; fold spaces.
+        PROJ="\$(printf '%s' "\${PROJ}" | tr -d ':' | tr -s '[:space:]' '_')"
+      fi
+      if [ -z "\${AGENT}" ]; then
+        if [ -n "\${PROJ}" ]; then AGENT="claude:\${PROJ}"; else AGENT="claude"; fi
+      fi
+      [ -z "\${TASK}" ]  && TASK="\$(jq_get '.session_id')"
+      [ -z "\${TASK}" ]  && TASK="\$(jq_get '.transcript_path' | sed 's#.*/##;s#\\.jsonl\$##')"
+      # Last-resort fallback must not collapse to one shared key across consoles;
+      # bind it to the project so distinct projects never merge into one task.
+      [ -z "\${TASK}" ]  && TASK="session-\${PROJ:-default}"
+      case "\${EVT}" in
+        Notification|notification)
+          STATUS="\${STATUS:-waiting_input}"
+          [ -z "\${TITLE}" ] && TITLE="\$(jq_get '.message')"
+          [ -z "\${TITLE}" ] && TITLE="Claude needs your input"
+          ;;
+        SubagentStop|subagent_stop)
+          # Subagent turns are internal — don't spam the user. Installer
+          # never registers this event; this branch only fires if the user
+          # wired SubagentStop themselves.
+          exit 0
+          ;;
+        Stop|stop)
+          STATUS="\${STATUS:-done}"
+          [ -z "\${TITLE}" ] && TITLE="Claude turn complete"
+          ;;
+        *)
+          # Fallback: payload has .message → treat as notification
+          MSG="\$(jq_get '.message')"
+          if [ -n "\${MSG}" ]; then
+            STATUS="\${STATUS:-waiting_input}"
+            TITLE="\${TITLE:-\$MSG}"
+          else
+            STATUS="\${STATUS:-done}"
+            TITLE="\${TITLE:-Claude event}"
+          fi
+          ;;
+      esac
+      ;;
+    codex)
+      EVT="\$(jq_get '.hook_event_name')"
+      [ -z "\${AGENT}" ] && AGENT="codex"
+      [ -z "\${TASK}" ]  && TASK="\$(jq_get '.session_id')"
+      [ -z "\${TASK}" ]  && TASK="session"
+      case "\${EVT}" in
+        SessionStart|session_start)
+          STATUS="\${STATUS:-running}"
+          [ -z "\${TITLE}" ] && TITLE="Codex session started"
+          ;;
+        PermissionRequest|permission_request)
+          STATUS="\${STATUS:-waiting_input}"
+          [ -z "\${TITLE}" ] && TITLE="Codex needs approval"
+          [ -z "\${BODY}" ]  && BODY="\$(jq_get '.reason')"
+          ;;
+        Stop|stop)
+          STATUS="\${STATUS:-done}"
+          [ -z "\${TITLE}" ] && TITLE="\$(jq_get '.last_assistant_message | .[0:120]')"
+          [ -z "\${TITLE}" ] && TITLE="Codex turn complete"
+          ;;
+        *)
+          STATUS="\${STATUS:-done}"
+          TITLE="\${TITLE:-\${EVT:-Codex event}}"
+          ;;
+      esac
+      ;;
+    codex-notify)
+      # Codex calls: bark-push --from codex-notify '<json>'
+      # Schema: {type, "thread-id", "turn-id", cwd, "input-messages", "last-assistant-message"}
+      [ -z "\${AGENT}" ] && AGENT="codex"
+      [ -z "\${TASK}" ]  && TASK="\$(jq_get '."thread-id"')"
+      [ -z "\${TASK}" ]  && TASK="session"
+      TYPE="\$(jq_get '.type')"
+      case "\${TYPE}" in
+        agent-turn-complete|*complete*)
+          STATUS="\${STATUS:-done}"
+          [ -z "\${TITLE}" ] && TITLE="\$(jq_get '."last-assistant-message" | .[0:120]')"
+          [ -z "\${TITLE}" ] && TITLE="Codex turn complete"
+          ;;
+        *)
+          STATUS="\${STATUS:-done}"
+          TITLE="\${TITLE:-\${TYPE:-Codex notify}}"
+          ;;
+      esac
+      ;;
+    *)
+      echo "bark-push: unknown --from value: \${FROM}" >&2
+      exit 64
+      ;;
+  esac
+fi
+
+[ -z "\${KEY}" ] && { echo "bark-push: BARK_KEY not set" >&2; exit 78; }
+[ -z "\${GROUP}" ] && GROUP="\${AGENT:-default}"
+
+# ── URL-encode and POST ─────────────────────────────────────────────────────
+esc() {
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "\$1" | python3 -c 'import sys,urllib.parse;sys.stdout.write(urllib.parse.quote(sys.stdin.read(),safe=""))'
+  else
+    # Best-effort POSIX fallback (covers the chars Bark sees most often)
+    printf '%s' "\$1" | sed 's/%/%25/g;s/&/%26/g;s/=/%3D/g;s/ /%20/g;s/?/%3F/g;s/#/%23/g;s/+/%2B/g'
+  fi
+}
+
+FORM=""
+add() { [ -n "\$2" ] || return 0; FORM="\${FORM}\${FORM:+&}\$1=\$(esc "\$2")"; }
+add agent_id     "\${AGENT}"
+add task_id      "\${TASK}"
+add agent_status "\${STATUS}"
+add progress     "\${PROGRESS}"
+add eta          "\${ETA}"
+add title        "\${TITLE}"
+add body         "\${BODY}"
+add group        "\${GROUP}"
+add level        "\${LEVEL}"
+add sound        "\${SOUND}"
+add icon         "\${ICON}"
+
+URL="\${SERVER%/}/\$(esc "\${KEY}")"
+if curl -fsS -X POST -H 'Content-Type: application/x-www-form-urlencoded' \\
+     --data "\${FORM}" "\${URL}" >/dev/null; then
+  echo "bark-push: ok (\${AGENT:-no-agent}/\${TASK:-no-task}/\${STATUS:-no-status})"
+else
+  echo "bark-push: push failed" >&2
+  exit 75
+fi
+BARKPUSH
+chmod 700 "${BARK_PUSH}"
+ok "bark-push installed"
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+backup() { [ -f "$1" ] && [ ! -f "$1.barkmate.bak" ] && cp "$1" "$1.barkmate.bak" || :; }
+
+toml_escape() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+
+# ── Claude Code: ~/.claude/settings.json (Notification + Stop only) ──────────
+install_claude() {
+  CLAUDE_DIR="${HOME}/.claude"
+  CLAUDE_CFG="${CLAUDE_DIR}/settings.json"
+  if [ ! -d "${CLAUDE_DIR}" ]; then
+    say "${DIM}  · claude not found at ~/.claude — skip${RESET}"
+    return
+  fi
+  step "Wiring Claude Code hooks → ${CLAUDE_CFG}"
+  if [ "${HAS_JQ}" -eq 0 ]; then
+    warn "jq not found — skipping Claude Code (install jq then re-run)"
+    return
+  fi
+  mkdir -p "${CLAUDE_DIR}"
+  [ -f "${CLAUDE_CFG}" ] || echo '{}' > "${CLAUDE_CFG}"
+  backup "${CLAUDE_CFG}"
+
+  TMP="$(mktemp)"
+  if jq --arg push "${BARK_PUSH}" '
+    def barkmate_hook: { hooks: [{type:"command", command:($push + " --from claude")}] };
+    def not_barkmate:
+      (.hooks // [])
+      | map(select((.command // "") | contains("bark-push --from claude") | not));
+    .hooks = (.hooks // {}) |
+    .hooks.Notification = (((.hooks.Notification // []) | map(.hooks = not_barkmate) | map(select((.hooks // []) | length > 0))) + [barkmate_hook]) |
+    .hooks.Stop         = (((.hooks.Stop // [])         | map(.hooks = not_barkmate) | map(select((.hooks // []) | length > 0))) + [barkmate_hook])
+  ' "${CLAUDE_CFG}" > "${TMP}"; then
+    mv "${TMP}" "${CLAUDE_CFG}"
+    ok "claude · Notification + Stop wired (reads stdin JSON)"
+  else
+    rm -f "${TMP}"
+    warn "claude · ${CLAUDE_CFG} is not valid JSON — left unchanged (fix it, then re-run)"
+  fi
+}
+
+# ── Codex CLI: ~/.codex/config.toml notify + ~/.codex/hooks.json ─────────────
+install_codex() {
+  CODEX_DIR="${HOME}/.codex"
+  if [ ! -d "${CODEX_DIR}" ]; then
+    say "${DIM}  · codex not found at ~/.codex — skip${RESET}"
+    return
+  fi
+  CODEX_TOML="${CODEX_DIR}/config.toml"
+  CODEX_HOOKS="${CODEX_DIR}/hooks.json"
+  if [ "${HAS_JQ}" -eq 0 ]; then
+    warn "jq not found — skipping Codex hooks (install jq then re-run)"
+    return
+  fi
+  step "Wiring Codex notify → ${CODEX_TOML}"
+  mkdir -p "${CODEX_DIR}"
+  [ -f "${CODEX_TOML}" ] || : > "${CODEX_TOML}"
+  backup "${CODEX_TOML}"
+  # Keep notify top-level even when the file ends inside a [table].
+  BARK_PUSH_TOML="$(toml_escape "${BARK_PUSH}")"
+  NOTIFY_LINE="notify = [\"${BARK_PUSH_TOML}\", \"--from\", \"codex-notify\"]"
+  awk -v notify="${NOTIFY_LINE}" '
+    BEGIN { inserted = 0; top = 1 }
+    /^[[:space:]]*\[\[?[^]]+\]\]?[[:space:]]*(#.*)?$/ {
+      if (!inserted) { print notify; inserted = 1 }
+      top = 0
+    }
+    top && /^[[:space:]]*notify[[:space:]]*=/ { next }
+    { print }
+    END { if (!inserted) print notify }
+  ' "${CODEX_TOML}" > "${CODEX_TOML}.tmp" \
+    && mv "${CODEX_TOML}.tmp" "${CODEX_TOML}"
+  ok "codex · notify (agent-turn-complete → done)"
+
+  step "Wiring Codex PermissionRequest → ${CODEX_HOOKS}"
+  [ -f "${CODEX_HOOKS}" ] || echo '{}' > "${CODEX_HOOKS}"
+  backup "${CODEX_HOOKS}"
+  TMP="$(mktemp)"
+  if jq --arg push "${BARK_PUSH}" '
+    def barkmate_hook: {type:"command", command:($push + " --from codex"), timeout: 30};
+    .hooks = (.hooks // {}) |
+    .hooks.PermissionRequest = (((.hooks.PermissionRequest // [])
+      | map(.hooks = ((.hooks // []) | map(select((.command // "") | contains("bark-push --from codex") | not))))
+      | map(select((.hooks // []) | length > 0))) + [{hooks: [barkmate_hook]}])
+  ' "${CODEX_HOOKS}" > "${TMP}"; then
+    mv "${TMP}" "${CODEX_HOOKS}"
+    ok "codex · PermissionRequest wired (run /hooks in TUI once to approve)"
+  else
+    rm -f "${TMP}"
+    warn "codex · ${CODEX_HOOKS} is not valid JSON — left unchanged (fix it, then re-run)"
+  fi
+}
+
+# ── OpenCode: TS plugin in ~/.config/opencode/plugins + opencode.json reg ───
+install_opencode() {
+  # OpenCode looks at ~/.config/opencode/ for global config (per current docs);
+  # older builds use ~/.opencode/. Detect either; if both exist, prefer
+  # ~/.config/opencode/.
+  OPENCODE_GLOBAL=""
+  if [ -d "${XDG_CONFIG_HOME:-${HOME}/.config}/opencode" ]; then
+    OPENCODE_GLOBAL="${XDG_CONFIG_HOME:-${HOME}/.config}/opencode"
+  elif [ -d "${HOME}/.opencode" ]; then
+    OPENCODE_GLOBAL="${HOME}/.opencode"
+  fi
+  if [ -z "${OPENCODE_GLOBAL}" ]; then
+    say "${DIM}  · opencode not found (~/.config/opencode or ~/.opencode) — skip${RESET}"
+    return
+  fi
+
+  PLUGIN_DIR="${OPENCODE_GLOBAL}/plugins"
+  PLUGIN_FILE="${PLUGIN_DIR}/barkmate.ts"
+  CFG_FILE="${OPENCODE_GLOBAL}/opencode.json"
+
+  step "Wiring OpenCode plugin → ${PLUGIN_FILE}"
+  mkdir -p "${PLUGIN_DIR}"
+  backup "${PLUGIN_FILE}"
+
+  # JS string literal escape — POSIX-only, works on macOS bash 3.2.
+  js_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/`/\\`/g; s/\$/\\$/g'
+  }
+  BARK_KEY_JS="$(js_escape "${BARK_KEY}")"
+  BARK_SERVER_JS="$(js_escape "${BARK_SERVER}")"
+
+  # Embed key/server/binary path so the plugin is self-contained — no env
+  # leakage required at runtime.
+  cat > "${PLUGIN_FILE}" <<OPENCODE
+// Managed by BarkMate installer — re-run install.sh to refresh.
+// OpenCode plugin contract: https://opencode.ai/docs/plugins/
+
+import type { Plugin } from "@opencode-ai/plugin";
+
+const BARK_KEY = "${BARK_KEY_JS}";
+const BARK_SERVER = "${BARK_SERVER_JS}";
+
+async function push(fields: Record<string, string | undefined>) {
+  const body = new URLSearchParams();
+  for (const [k, v] of Object.entries(fields)) if (v) body.set(k, v);
+  try {
+    await fetch(\`\${BARK_SERVER.replace(/\\/+\$/, "")}/\${BARK_KEY}\`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+  } catch (err) {
+    // Plugin errors must not break OpenCode — swallow and log.
+    console.error("[barkmate] push failed:", err);
+  }
+}
+
+const plugin: Plugin = async () => ({
+  event: async ({ event }: { event: { type: string; properties?: Record<string, any> } }) => {
+    const p = event.properties ?? {};
+    const sessionId = p.sessionId ?? p.session_id ?? "session";
+    const common = { agent_id: "opencode", task_id: String(sessionId), group: "opencode" };
+    switch (event.type) {
+      case "session.created":
+        await push({ ...common, agent_status: "running", title: "OpenCode session started" });
+        break;
+      case "session.idle":
+        await push({ ...common, agent_status: "done", title: "OpenCode turn complete" });
+        break;
+      case "session.error":
+        await push({ ...common, agent_status: "failed", title: "OpenCode error", body: p.error ?? "" });
+        break;
+      case "permission.asked":
+        await push({ ...common, agent_status: "waiting_input", title: p.title ?? "OpenCode needs permission", body: p.detail ?? "" });
+        break;
+    }
+  },
+});
+
+export default plugin;
+OPENCODE
+  chmod 600 "${PLUGIN_FILE}"
+  ok "opencode · plugin file written"
+
+  step "Registering plugin in ${CFG_FILE}"
+  if [ "${HAS_JQ}" -eq 1 ]; then
+    [ -f "${CFG_FILE}" ] || echo '{}' > "${CFG_FILE}"
+    backup "${CFG_FILE}"
+    TMP="$(mktemp)"
+    PLUGIN_REL="./plugins/barkmate.ts"
+    if jq --arg p "${PLUGIN_REL}" '
+      .["$schema"] = (.["$schema"] // "https://opencode.ai/config.json") |
+      .plugin = (((.plugin // []) | map(select(. != $p))) + [$p])
+    ' "${CFG_FILE}" > "${TMP}"; then
+      mv "${TMP}" "${CFG_FILE}"
+      ok "opencode · opencode.json registered"
+    else
+      rm -f "${TMP}"
+      warn "opencode · ${CFG_FILE} is not valid JSON — left unchanged (fix it, then re-run)"
+    fi
+  else
+    warn "opencode.json not patched (jq missing). Add this manually:"
+    say  "    { \"plugin\": [\"./plugins/barkmate.ts\"] }"
+  fi
+}
+
+# ── orchestrate ──────────────────────────────────────────────────────────────
+KEY_HEAD="$(printf '%s' "${BARK_KEY}" | cut -c1-4)"
+KEY_TAIL="$(printf '%s' "${BARK_KEY}" | rev | cut -c1-4 | rev)"
+say ""
+say "${BOLD}BarkMate hook installer${RESET}  ${DIM}— device key ${KEY_HEAD}…${KEY_TAIL}  ·  ${BARK_SERVER}${RESET}"
+say ""
+
+install_claude
+install_codex
+install_opencode
+
+say ""
+ok "${BOLD}Done.${RESET} Send a test push:"
+say "  ${BARK_PUSH} --agent demo --task hello --status running --title \"first push\""
+say ""
+say "${DIM}Notes:${RESET}"
+say "  · Claude Code & Codex hooks read JSON from stdin — no env vars needed."
+say "  · Codex requires running ${BOLD}/hooks${RESET} once in its TUI to approve the new hook."
+say "  · Self-built agents: call ${BARK_PUSH} with --agent/--task/--status flags directly."
