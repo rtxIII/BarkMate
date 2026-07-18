@@ -42,3 +42,34 @@ public enum CryptoPadding: String, Codable, Sendable, CaseIterable {
     case pkcs7
     case noPadding
 }
+
+/// Running task 超时判定阈值。`.off` = 关闭 stale 推断。
+public enum StaleThreshold: Equatable, Hashable, Sendable {
+    case off
+    case minutes(Int)
+
+    /// 秒数;`.off` 无阈值返回 nil。
+    public var seconds: TimeInterval? {
+        switch self {
+        case .off: return nil
+        case .minutes(let m): return TimeInterval(m * 60)
+        }
+    }
+
+    /// Settings 行 / picker 展示文案。
+    public var displayLabel: String {
+        switch self {
+        case .off: return "off"
+        case .minutes(let m): return "\(m) min"
+        }
+    }
+}
+
+public enum StaleThresholdCatalog {
+    /// Settings picker 档位。
+    public static let options: [StaleThreshold] =
+        [.off, .minutes(10), .minutes(30), .minutes(60), .minutes(120)]
+
+    /// 未配置时的默认阈值。
+    public static let defaultThreshold: StaleThreshold = .minutes(30)
+}
