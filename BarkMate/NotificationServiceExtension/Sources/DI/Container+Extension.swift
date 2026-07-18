@@ -47,6 +47,12 @@ extension Container {
         }
         .singleton
     }
+
+    /// Per-status 声音偏好(共享 UserDefaults)。
+    var alertSoundStore: Factory<AlertSoundStore> {
+        self { AlertSoundStore() }
+            .singleton
+    }
 }
 
 private extension Bundle {

@@ -79,6 +79,14 @@ extension Container {
             .singleton
     }
 
+    /// Per-status 声音偏好存储(共享 UserDefaults)。
+    var alertSoundStore: Factory<AlertSoundStore> {
+        self {
+            AlertSoundStore(defaults: ProcessInfo.processInfo.barkAgentTestDefaults)
+        }
+        .singleton
+    }
+
     /// 通知 / APNs 健康状态(用于 Setup tab 顶部 banner)。
     var notificationStatusStore: Factory<NotificationStatusStore> {
         self {
