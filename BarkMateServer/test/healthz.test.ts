@@ -42,7 +42,7 @@ describe('GET /info', () => {
       };
     };
     expect(body.code).toBe(200);
-    expect(body.data?.name).toBe('barkmate-server');
+    expect(body.data?.name).toBe('barkagent-server');
     expect(body.data?.capabilities).toContain('v0.3-fields');
     expect(body.data?.capabilities).toContain('health');
     expect(body.data?.capabilities).toContain('liveactivity');
@@ -60,10 +60,10 @@ describe('Bearer auth', () => {
     } as unknown as KVNamespace,
     APNS_TEAM_ID: 'TEAM',
     APNS_KEY_ID: 'KEY',
-    APNS_TOPIC: 'com.barkmate.ios',
+    APNS_TOPIC: 'com.barkagent.ios',
     APNS_ENV: 'sandbox' as const,
     APNS_PRIVATE_KEY: 'unused',
-    BARKMATE_AUTH_TOKEN: 'secret',
+    BARKAGENT_AUTH_TOKEN: 'secret',
   };
 
   it('rejects protected routes when token is configured and missing', async () => {

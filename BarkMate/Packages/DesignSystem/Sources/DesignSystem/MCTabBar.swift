@@ -83,6 +83,8 @@ public struct MCTabBar<Tab: Hashable>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text(item.label))
+        .accessibilityIdentifier("tab-\(item.label.lowercased())")
     }
 }
 

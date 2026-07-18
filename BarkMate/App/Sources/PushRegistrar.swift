@@ -1,9 +1,9 @@
 //
 //  PushRegistrar.swift
-//  BarkMate
+//  BarkAgent
 //
 //  APNs token → 自建服务器注册的协调层。
-//  - 启动时若 SwiftData 中无 Server，注入默认 BarkMate 服务器
+//  - 启动时若 SwiftData 中无 Server，注入默认 BarkAgent 服务器
 //  - 收到 device token 后调 BarkClient.register，把服务器分配的 key 持久化到 Server
 //
 
@@ -16,8 +16,8 @@ import BarkService
 @MainActor
 final class PushRegistrar {
 
-    static let defaultServerAddress = "https://barkmate.we2.xyz"
-    static let defaultServerName = "BarkMate Cloud"
+    static let defaultServerAddress = "https://barkagent.we2.xyz"
+    static let defaultServerName = "BarkAgent Cloud"
 
     private let modelContainer: ModelContainer
     private let barkClient: BarkClientProtocol
@@ -41,7 +41,7 @@ final class PushRegistrar {
         let context = modelContainer.mainContext
         let existing = (try? context.fetch(FetchDescriptor<Server>())) ?? []
         if !existing.isEmpty {
-            print("[PushRegistrar] seed skipped — \(existing.count) server(s) already present")
+            dprint("[PushRegistrar] seed skipped — \(existing.count) server(s) already present")
             return
         }
 
@@ -54,30 +54,30 @@ final class PushRegistrar {
         context.insert(server)
         do {
             try context.save()
-            print("[PushRegistrar] seeded default server: \(server.address)")
+            dprint("[PushRegistrar] seeded default server")
         } catch {
-            print("[PushRegistrar] ❌ seed save failed: \(error)")
+            BarkLog.storage.error("seed save failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
     /// 收到 APNs token 后调用：保存 token + 对所有未注册（key 为空）的 server 调 register。
     func handleDeviceToken(_ token: String) async {
         tokenStore.save(token: token)
-        print("[PushRegistrar] token saved to store (len=\(token.count))")
+        dprint("[PushRegistrar] token saved to store (len=\(token.count))")
 
         let context = modelContainer.mainContext
         let servers: [Server]
         do {
             servers = try context.fetch(FetchDescriptor<Server>())
         } catch {
-            print("[PushRegistrar] ❌ fetch servers failed: \(error)")
-            statusStore.save(NotificationStatus(
+            BarkLog.storage.error("fetch servers failed: \(error.localizedDescription, privacy: .public)")
+            saveNotificationStatusPreservingStorageFailure(NotificationStatus(
                 kind: .serverUnreachable,
                 detail: "Failed to enumerate servers: \(error.localizedDescription)"
             ))
             return
         }
-        print("[PushRegistrar] registering with \(servers.count) server(s)")
+        dprint("[PushRegistrar] registering with \(servers.count) server(s)")
 
         var anyFailed = false
         for server in servers {
@@ -85,26 +85,31 @@ final class PushRegistrar {
             if !success { anyFailed = true }
         }
         if anyFailed {
-            statusStore.save(NotificationStatus(
+            saveNotificationStatusPreservingStorageFailure(NotificationStatus(
                 kind: .serverUnreachable,
                 detail: "One or more servers failed to register. Open Servers to retry."
             ))
         } else if !servers.isEmpty {
-            statusStore.save(NotificationStatus(kind: .ok))
+            saveNotificationStatusPreservingStorageFailure(NotificationStatus(kind: .ok))
         }
+    }
+
+    private func saveNotificationStatusPreservingStorageFailure(_ status: NotificationStatus) {
+        guard statusStore.current().kind != .storageUnavailable else { return }
+        statusStore.save(status)
     }
 
     @discardableResult
     private func register(server: Server, token: String, context: ModelContext) async -> Bool {
         guard let url = URL(string: server.address) else {
-            print("[PushRegistrar] ❌ invalid server URL: \(server.address)")
+            BarkLog.push.error("invalid server URL")
             server.state = .error
             try? context.save()
             return false
         }
 
         let existingKey: String? = server.key.isEmpty ? nil : server.key
-        print("[PushRegistrar] → register to \(url) existingKey=\(existingKey ?? "nil")")
+        dprint("[PushRegistrar] → register existingKey=\(existingKey != nil ? "<set>" : "nil")")
         do {
             let assignedKey = try await barkClient.register(
                 deviceToken: token,
@@ -115,12 +120,12 @@ final class PushRegistrar {
             server.state = .ok
             server.lastSyncedAt = .now
             try context.save()
-            print("[PushRegistrar] ✅ registered, key=\(assignedKey)")
+            BarkLog.push.info("registered with server (key len=\(assignedKey.count, privacy: .public))")
             return true
         } catch {
             server.state = .error
             try? context.save()
-            print("[PushRegistrar] ❌ register failed: \(error)")
+            BarkLog.push.error("register failed: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }

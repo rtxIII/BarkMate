@@ -1,6 +1,6 @@
 //
 //  AppDelegate.swift
-//  BarkMate
+//  BarkAgent
 //
 //  通过 @UIApplicationDelegateAdaptor 接入 SwiftUI 生命周期。
 //  负责 APNs 注册流程：
@@ -24,11 +24,24 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        print("[BarkMate] AppDelegate didFinishLaunching")
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            dprint("[BarkAgent] XCTest host launch, skipping app startup side effects")
+            return true
+        }
+        #endif
+        dprint("[BarkAgent] AppDelegate didFinishLaunching")
         Task { @MainActor in
             pushRegistrar.seedDefaultServerIfNeeded()
-            print("[BarkMate] seedDefaultServerIfNeeded done")
+            dprint("[BarkAgent] seedDefaultServerIfNeeded done")
             pendingQueueDrainer.start()
+            #if DEBUG
+            // SIM_SKIP_NOTIF_PROMPT=1 时跳过通知权限弹窗,用于 UI 截图/快照测试。
+            if ProcessInfo.processInfo.environment["SIM_SKIP_NOTIF_PROMPT"] == "1" {
+                dprint("[BarkAgent] SIM_SKIP_NOTIF_PROMPT=1, skipping notification prompt")
+                return
+            }
+            #endif
             await requestAuthorizationAndRegister(application: application)
         }
         return true
@@ -39,14 +52,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
-        print("[BarkMate] APNs device token received: \(hex.prefix(8))... (len=\(hex.count))")
+        #if DEBUG
+        dprint("[BarkAgent] APNs device token received: \(hex.prefix(8))… (len=\(hex.count))")
+        #else
+        BarkLog.push.info("APNs token received (len=\(hex.count, privacy: .public))")
+        #endif
         Task { @MainActor in
             await pushRegistrar.handleDeviceToken(hex)
-            // PushRegistrar 内部会按 server 健康度更新 status;此处兜底为 ok。
-            if statusStore.current().kind != .serverUnreachable {
-                statusStore.save(NotificationStatus(kind: .ok))
-            }
-            print("[BarkMate] handleDeviceToken finished")
+            dprint("[BarkAgent] handleDeviceToken finished")
         }
     }
 
@@ -54,9 +67,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        print("[BarkMate] ❌ APNs registration failed: \(error.localizedDescription)")
-        print("[BarkMate]    full error: \(error)")
-        statusStore.save(NotificationStatus(
+        BarkLog.push.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+        saveNotificationStatusPreservingStorageFailure(NotificationStatus(
             kind: .apnsRegistrationFailed,
             detail: error.localizedDescription
         ))
@@ -67,22 +79,27 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         do {
             let granted = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound, .badge])
-            print("[BarkMate] Notification authorization granted=\(granted)")
+            dprint("[BarkAgent] Notification authorization granted=\(granted)")
             if granted {
                 application.registerForRemoteNotifications()
-                print("[BarkMate] registerForRemoteNotifications called, waiting for callback...")
+                dprint("[BarkAgent] registerForRemoteNotifications called, waiting for callback…")
             } else {
-                statusStore.save(NotificationStatus(
+                saveNotificationStatusPreservingStorageFailure(NotificationStatus(
                     kind: .authorizationDenied,
                     detail: "Notification permission was denied"
                 ))
             }
         } catch {
-            print("[BarkMate] ❌ Notification authorization error: \(error.localizedDescription)")
-            statusStore.save(NotificationStatus(
+            BarkLog.push.error("Notification authorization error: \(error.localizedDescription, privacy: .public)")
+            saveNotificationStatusPreservingStorageFailure(NotificationStatus(
                 kind: .authorizationDenied,
                 detail: error.localizedDescription
             ))
         }
+    }
+
+    private func saveNotificationStatusPreservingStorageFailure(_ status: NotificationStatus) {
+        guard statusStore.current().kind != .storageUnavailable else { return }
+        statusStore.save(status)
     }
 }

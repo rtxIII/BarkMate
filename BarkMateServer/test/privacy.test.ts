@@ -11,7 +11,7 @@ describe('GET /privacy', () => {
     const body = await response.text();
     expect(body).toContain('BarkAgent Privacy Policy');
     expect(body).toContain('BarkAgent 隐私政策');
-    expect(body).toContain('group.com.barkmate.shared');
+    expect(body).toContain('group.com.barkagent.shared');
     expect(body).toContain('Apple');
     expect(body).toContain('Cloudflare');
     expect(body).toContain('AES');
@@ -43,10 +43,10 @@ describe('Privacy is public when bearer auth is enabled', () => {
     } as unknown as KVNamespace,
     APNS_TEAM_ID: 'TEAM',
     APNS_KEY_ID: 'KEY',
-    APNS_TOPIC: 'com.barkmate.ios',
+    APNS_TOPIC: 'com.barkagent.ios',
     APNS_ENV: 'sandbox' as const,
     APNS_PRIVATE_KEY: 'unused',
-    BARKMATE_AUTH_TOKEN: 'secret',
+    BARKAGENT_AUTH_TOKEN: 'secret',
   };
 
   it('serves /privacy without authorization header', async () => {

@@ -13,9 +13,10 @@ public enum SharedModelContainer {
     /// 创建共享 ModelContainer。
     ///
     /// 所有 target 必须使用相同的 schema 和 store URL，否则会导致数据不一致。
+    /// 抛错路径:App Group 容器不可用时上层应降级到 `makeInMemory`。
     public static func make() throws -> ModelContainer {
         try AppGroup.ensureDirectories()
-        return try make(storeURL: AppGroup.storeURL)
+        return try make(storeURL: AppGroup.resolveStoreURL())
     }
 
     /// 在指定 URL 创建 ModelContainer。用于测试跨实例数据共享。
@@ -29,7 +30,7 @@ public enum SharedModelContainer {
 
         return try ModelContainer(
             for: currentSchema,
-            migrationPlan: BarkMateMigrationPlan.self,
+            migrationPlan: BarkAgentMigrationPlan.self,
             configurations: [configuration]
         )
     }

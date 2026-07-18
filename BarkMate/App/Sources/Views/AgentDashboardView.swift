@@ -281,12 +281,14 @@ private struct DashboardContent: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(MCPrimaryButtonStyle())
+            .accessibilityIdentifier("dashboard-send-demo-push")
 
             Button(action: onGoToSetup) {
                 Text("Setup guide")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(MCGhostButtonStyle())
+            .accessibilityIdentifier("dashboard-setup-guide")
         }
         .padding(.top, 6)
     }

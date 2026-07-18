@@ -44,8 +44,9 @@ public struct PendingQueue: @unchecked Sendable {
         try data.write(to: fileURL, options: .atomic)
     }
 
-    /// 排空：返回所有 pending 并删文件。读取/反序列化失败的文件被跳过（但保留以便下次重试）。
-    public func drain() throws -> [ParsedPush] {
+    /// 返回所有可解码的 pending，但保留文件，等待调用方完成持久化后显式确认。
+    /// 读取/反序列化失败的文件被跳过并保留，以便下次重试。
+    public func pendingMessages() throws -> [ParsedPush] {
         guard fileManager.fileExists(atPath: baseDirectory.path) else { return [] }
         let urls = try fileManager.contentsOfDirectory(
             at: baseDirectory,
@@ -60,7 +61,22 @@ public struct PendingQueue: @unchecked Sendable {
                 continue
             }
             results.append(parsed)
-            try? fileManager.removeItem(at: url)
+        }
+        return results
+    }
+
+    /// 确认单条 pending 已持久化并删除对应文件。重复确认保持幂等。
+    public func acknowledge(_ parsed: ParsedPush) throws {
+        let fileURL = baseDirectory.appending(path: filename(for: parsed.id))
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+        try fileManager.removeItem(at: fileURL)
+    }
+
+    /// 排空：返回所有 pending 并删文件。读取/反序列化失败的文件被跳过（但保留以便下次重试）。
+    public func drain() throws -> [ParsedPush] {
+        let results = try pendingMessages()
+        for parsed in results {
+            try? acknowledge(parsed)
         }
         return results
     }

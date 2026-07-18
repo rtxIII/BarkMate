@@ -51,4 +51,10 @@ final class KeychainServiceTests: XCTestCase {
     func testDeleteMissingIsNoOp() throws {
         XCTAssertNoThrow(try KeychainService.delete(forKey: "nonexistent.key", configuration: config))
     }
+
+    func testSharedConfigurationMatchesDeclaredKeychainAccessGroup() {
+        let sharedConfiguration = KeychainService.Configuration.shared(teamID: "TESTTEAM")
+
+        XCTAssertEqual(sharedConfiguration.accessGroup, "TESTTEAM.com.barkagent.shared")
+    }
 }

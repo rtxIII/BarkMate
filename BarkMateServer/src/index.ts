@@ -5,6 +5,7 @@ import { registerRoute } from './routes/register';
 import { pushRoute } from './routes/push';
 import { liveActivityRoute } from './routes/liveactivity';
 import { privacyRoute } from './routes/privacy';
+import { installRoute } from './routes/install';
 import { bearerAuth } from './auth';
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -15,17 +16,18 @@ app.get('/ping', (c) => c.json(ok(undefined, 'pong')));
 app.get('/info', (c) =>
   c.json(
     ok({
-      name: 'barkmate-server',
+      name: 'barkagent-server',
       version: '0.1.0',
       apns_env: c.env.APNS_ENV,
       apns_topic: c.env.APNS_TOPIC,
-      auth_required: Boolean(c.env.BARKMATE_AUTH_TOKEN),
-      capabilities: ['register', 'push', 'v0.3-fields', 'health', 'privacy-policy', 'liveactivity'],
+      auth_required: Boolean(c.env.BARKAGENT_AUTH_TOKEN),
+      capabilities: ['register', 'push', 'v0.3-fields', 'health', 'privacy-policy', 'liveactivity', 'install-script'],
     }),
   ),
 );
 
 app.route('/', privacyRoute);
+app.route('/', installRoute);
 app.route('/', registerRoute);
 app.route('/', liveActivityRoute);
 app.route('/', pushRoute);

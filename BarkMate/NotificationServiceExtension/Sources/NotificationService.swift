@@ -12,11 +12,14 @@
 
 import UserNotifications
 import SwiftData
+import os
 import Models
 import Store
 import BarkService
 
 final class NotificationService: UNNotificationServiceExtension {
+
+    private static let log = Logger(subsystem: "com.barkagent.ios", category: "nse")
 
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var bestAttemptContent: UNMutableNotificationContent?
@@ -47,7 +50,7 @@ final class NotificationService: UNNotificationServiceExtension {
         do {
             container = try SharedModelContainer.make()
         } catch {
-            NSLog("[BarkMate] SharedModelContainer.make failed: \(error.localizedDescription)")
+            Self.log.error("SharedModelContainer.make failed: \(error.localizedDescription, privacy: .public)")
             container = nil
         }
 
@@ -65,7 +68,7 @@ final class NotificationService: UNNotificationServiceExtension {
         case .archived, .pending:
             DarwinNotification.post(.itemDidArrive)
         case .dropped(_, _, let error):
-            NSLog("[BarkMate] push dropped (archive + pending both failed): \(error.localizedDescription)")
+            Self.log.error("push dropped (archive + pending both failed): \(error.localizedDescription, privacy: .public)")
         }
     }
 

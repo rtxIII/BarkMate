@@ -21,7 +21,15 @@ let package = Package(
                 "Models",
                 .product(name: "MarkdownUI", package: "swift-markdown-ui")
             ],
-            path: "Sources/DesignSystem"
+            path: "Sources/DesignSystem",
+            resources: [
+                .process("Resources")
+            ]
+        ),
+        .testTarget(
+            name: "DesignSystemTests",
+            dependencies: ["DesignSystem"],
+            path: "Tests/DesignSystemTests"
         )
     ]
 )

@@ -38,7 +38,7 @@ struct SetupView: View {
         let key = servers.first?.key.isEmpty == false ? servers.first!.key : "<key>"
         return """
         # detects ~/.claude, ~/.codex, ~/.opencode and installs hooks
-        curl -fsSL "https://barkmate.app/install.sh" \\
+        curl -fsSL "https://barkagent.we2.xyz/install.sh" \\
           | BARK_KEY=\(key) sh
 
         # or for one specific agent
@@ -84,9 +84,11 @@ struct SetupView: View {
                         Button(copyConfirmed ? "Copied" : "Copy install", action: copyInstall)
                             .buttonStyle(MCPrimaryButtonStyle())
                             .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("setup-copy-install")
                         Button(demoConfirmed ? "Sent ✓" : "Send test push", action: sendDemoPush)
                             .buttonStyle(MCGhostButtonStyle())
                             .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("setup-send-test-push")
                     }
 
                     MCSectionHeader("Hook integrations", trailing: "supported agents")

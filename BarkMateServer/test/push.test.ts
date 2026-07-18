@@ -49,7 +49,7 @@ describe('POST /push (V2 JSON)', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(capturedUrl).toBe(`${APNS_PRODUCTION_HOST}/3/device/${TEST_DEVICE_TOKEN}`);
-    expect(capturedHeaders?.get('apns-topic')).toBe('com.barkmate.ios');
+    expect(capturedHeaders?.get('apns-topic')).toBe('com.barkagent.ios');
     expect(capturedHeaders?.get('apns-push-type')).toBe('alert');
     expect(capturedHeaders?.get('authorization')).toMatch(/^bearer ey/);
 

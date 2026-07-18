@@ -43,6 +43,19 @@ final class PendingQueueTests: XCTestCase {
         XCTAssertEqual(drained.first?.body, "v2")
     }
 
+    func testPendingMessagesRemainQueuedUntilAcknowledged() throws {
+        try queue.enqueue(ParsedPush(id: "retryable", body: "keep until archived"))
+
+        let pendingMessages = try queue.pendingMessages()
+
+        XCTAssertEqual(pendingMessages.map(\.id), ["retryable"])
+        XCTAssertEqual(try queue.count(), 1)
+
+        try queue.acknowledge(pendingMessages[0])
+
+        XCTAssertEqual(try queue.count(), 0)
+    }
+
     func testDrainEmpty() throws {
         XCTAssertEqual(try queue.drain(), [])
     }

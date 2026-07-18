@@ -92,12 +92,14 @@ struct SearchView: View {
             .font(MissionControl.Font.jetBrainsMono(size: 16, weight: .regular))
             .foregroundStyle(MissionControl.Color.ink)
             .tracking(-0.32)
+            .accessibilityIdentifier("search-query-field")
 
             if !queryText.isEmpty {
                 Button("CLEAR") { queryText = "" }
                     .font(MissionControl.Font.jetBrainsMono(size: 9, weight: .bold))
                     .tracking(1.3)
                     .foregroundStyle(MissionControl.Color.inkSoft)
+                    .accessibilityIdentifier("search-clear")
             }
         }
         .padding(14)
@@ -122,6 +124,7 @@ struct SearchView: View {
                     MCChip(scope.title, isActive: selectedScope == scope) {
                         selectedScope = scope
                     }
+                    .accessibilityIdentifier("search-scope-\(scope.rawValue)")
                 }
             }
         }
@@ -145,6 +148,7 @@ struct SearchView: View {
                             statusChips.insert(chip.status)
                         }
                     }
+                    .accessibilityIdentifier("search-status-\(chip.rawValue)")
                 }
             }
         }
@@ -156,22 +160,25 @@ struct SearchView: View {
         HStack(spacing: 6) {
             Menu {
                 Button("all") { agentFilter = nil }
+                    .accessibilityIdentifier("search-agent-option-all")
                 ForEach(facets.agentIDs, id: \.self) { agentID in
                     Button(agentID) { agentFilter = agentID }
+                        .accessibilityIdentifier("search-agent-option-\(agentID)")
                 }
             } label: {
                 filterPillLabel("agent: \(agentFilter ?? "all")")
             }
+            .accessibilityIdentifier("search-agent-filter")
 
             Menu {
-                Picker("Date", selection: $dateFilter) {
-                    ForEach(DateRangeFilter.allCases) { f in
-                        Text(f.label).tag(f)
-                    }
+                ForEach(DateRangeFilter.allCases) { f in
+                    Button(f.label) { dateFilter = f }
+                        .accessibilityIdentifier("search-date-option-\(f.rawValue)")
                 }
             } label: {
                 filterPillLabel(dateFilter.label)
             }
+            .accessibilityIdentifier("search-date-filter")
         }
     }
 
@@ -190,18 +197,22 @@ struct SearchView: View {
                     MCChip("Stuck on…", isActive: false) {
                         statusChips = [.blocked]
                     }
+                    .accessibilityIdentifier("search-saved-stuck")
                     MCChip("Fails · 7d", isActive: false) {
                         statusChips = [.failed]
                         dateFilter = .last7d
                     }
+                    .accessibilityIdentifier("search-saved-fails")
                     MCChip("All wait", isActive: false) {
                         statusChips = [.waitingInput]
                     }
+                    .accessibilityIdentifier("search-saved-wait")
                     MCChip("Reset", isActive: false) {
                         statusChips = []
                         agentFilter = nil
                         dateFilter = .all
                     }
+                    .accessibilityIdentifier("search-saved-reset")
                 }
             }
         }
