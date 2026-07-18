@@ -362,6 +362,29 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
         XCTAssertTrue(bell.isSelected, app.debugDescription)
     }
 
+    func testSettingsExternalLinkRowsAreTappable() {
+        launchApp()
+
+        app.buttons["tab-settings"].tap()
+
+        // Privacy policy 是 App Store 合规项,必须可点。滚到可见再断言。
+        let privacy = app.buttons["settings-privacy-policy"]
+        for _ in 0..<4 {
+            if privacy.exists && privacy.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(privacy.exists, app.debugDescription)
+        XCTAssertTrue(privacy.isHittable, app.debugDescription)
+
+        let barkReference = app.buttons["settings-bark-reference"]
+        for _ in 0..<4 {
+            if barkReference.exists && barkReference.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(barkReference.exists, app.debugDescription)
+        XCTAssertTrue(barkReference.isHittable, app.debugDescription)
+    }
+
     func testHistoryFiltersSeededTimelineItems() {
         launchApp(seedScenario: "search-history")
 

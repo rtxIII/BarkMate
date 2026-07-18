@@ -32,6 +32,7 @@ struct SettingsView: View {
     @State private var showSoundPicker: Bool = false
 
     @EnvironmentObject private var selectedTab: SelectedTab
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -107,10 +108,14 @@ struct SettingsView: View {
                         title: "Analytics",
                         detail: "None. Summary prompts never leave iPhone."
                     ) { MCSettingValue("off", tone: .dim) }
-                    MCSettingRow(
-                        title: "Privacy policy",
-                        detail: "Required by App Store · barkagent.we2.xyz/privacy."
-                    ) { MCSettingValue("view ›", tone: .dim) }
+                    Button { openURL(Self.privacyPolicyURL) } label: {
+                        MCSettingRow(
+                            title: "Privacy policy",
+                            detail: "Required by App Store · barkagent.we2.xyz/privacy."
+                        ) { MCSettingValue("view ›", tone: .dim) }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-privacy-policy")
 
                     MCSectionHeader("Device", trailing: "APNs")
                     MCSettingRow(
@@ -124,10 +129,14 @@ struct SettingsView: View {
                     }
 
                     MCSectionHeader("About", trailing: "v\(appVersion)")
-                    MCSettingRow(
-                        title: "Bark protocol reference",
-                        detail: "github.com/Finb/Bark"
-                    ) { MCSettingValue("open") }
+                    Button { openURL(Self.barkReferenceURL) } label: {
+                        MCSettingRow(
+                            title: "Bark protocol reference",
+                            detail: "github.com/Finb/Bark"
+                        ) { MCSettingValue("open") }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-bark-reference")
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
@@ -230,4 +239,8 @@ struct SettingsView: View {
         let build = info?["CFBundleVersion"] as? String ?? "?"
         return "\(short) (\(build))"
     }
+
+    // 外链目标。硬编码值集中在此,避免散落 view body。
+    private static let privacyPolicyURL = URL(string: "https://barkagent.we2.xyz/privacy")!
+    private static let barkReferenceURL = URL(string: "https://github.com/Finb/Bark")!
 }
