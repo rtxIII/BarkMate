@@ -87,6 +87,14 @@ extension Container {
         .singleton
     }
 
+    /// Stale timeout 阈值存储(共享 UserDefaults)。
+    var staleTimeoutStore: Factory<StaleTimeoutStore> {
+        self {
+            StaleTimeoutStore(defaults: ProcessInfo.processInfo.barkAgentTestDefaults)
+        }
+        .singleton
+    }
+
     /// 通知 / APNs 健康状态(用于 Setup tab 顶部 banner)。
     var notificationStatusStore: Factory<NotificationStatusStore> {
         self {
