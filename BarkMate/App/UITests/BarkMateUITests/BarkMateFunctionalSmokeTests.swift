@@ -345,6 +345,23 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
         XCTAssertTrue(app.buttons["server-list-refresh"].exists)
     }
 
+    func testAlertSoundPickerOpensAndSelects() {
+        launchApp()
+
+        app.buttons["tab-settings"].tap()
+
+        let row = app.buttons["settings-alert-sound"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5), app.debugDescription)
+        row.tap()
+
+        // picker 打开的判定锚点用内部真实元素,避免耦合容器在 XCUITest 中的元素类型。
+        let bell = app.buttons["sound-row-bell"]
+        XCTAssertTrue(bell.waitForExistence(timeout: 5), app.debugDescription)
+        bell.tap()
+
+        XCTAssertTrue(bell.isSelected, app.debugDescription)
+    }
+
     func testHistoryFiltersSeededTimelineItems() {
         launchApp(seedScenario: "search-history")
 

@@ -17,6 +17,7 @@ import DesignSystem
 struct SettingsView: View {
 
     @Injected(\.deviceTokenStore) private var tokenStore: DeviceTokenStore
+    @Injected(\.alertSoundStore) private var alertSoundStore: AlertSoundStore
 
     @Query(sort: \Server.createdAt, order: .reverse)
     private var servers: [Server]
@@ -28,6 +29,7 @@ struct SettingsView: View {
     @State private var timeSensitiveAlerts: Bool = true
     @State private var showSetupGuide: Bool = false
     @State private var showServerList: Bool = false
+    @State private var showSoundPicker: Bool = false
 
     @EnvironmentObject private var selectedTab: SelectedTab
 
@@ -75,10 +77,14 @@ struct SettingsView: View {
                     ) {
                         MCToggle(isOn: $timeSensitiveAlerts, label: "Time-Sensitive alerts")
                     }
-                    MCSettingRow(
-                        title: "Alert sound",
-                        detail: "Per-status override · default = system."
-                    ) { MCSettingValue("default") }
+                    Button { showSoundPicker = true } label: {
+                        MCSettingRow(
+                            title: "Alert sound",
+                            detail: "Per-status override · default = system."
+                        ) { MCSettingValue(globalSoundLabel) }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-alert-sound")
 
                     MCSectionHeader("Hooks", trailing: "agent integration")
                     MCSettingRow(
@@ -134,6 +140,9 @@ struct SettingsView: View {
         }
         .navigationDestination(isPresented: $showServerList) {
             ServerListView()
+        }
+        .navigationDestination(isPresented: $showSoundPicker) {
+            AlertSoundPickerView()
         }
         .onAppear { consumePendingDeepLinkIfNeeded() }
         .onChange(of: selectedTab.pendingDeepLink) { _, _ in
@@ -205,6 +214,14 @@ struct SettingsView: View {
         guard let token = tokenStore.token() else { return "Not yet registered" }
         if token.count <= 16 { return token }
         return "\(token.prefix(8))…\(token.suffix(8))"
+    }
+
+    private var globalSoundLabel: String {
+        guard
+            let id = alertSoundStore.globalDefaultID(),
+            let sound = SoundCatalog.sound(for: id)
+        else { return "default" }
+        return sound.displayName.lowercased()
     }
 
     private var appVersion: String {
