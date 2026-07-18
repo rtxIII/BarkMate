@@ -54,6 +54,9 @@ targets:
     sources:
       - path: App/Sources
       - path: App/Resources
+      - path: Shared/Sounds
+        excludes:
+          - "LICENSE-sounds.md"
     info:
       path: App/Info.plist
       properties:
@@ -111,6 +114,9 @@ targets:
     platform: iOS
     sources:
       - path: NotificationServiceExtension/Sources
+      - path: Shared/Sounds
+        excludes:
+          - "LICENSE-sounds.md"
     info:
       path: NotificationServiceExtension/Info.plist
       properties:
