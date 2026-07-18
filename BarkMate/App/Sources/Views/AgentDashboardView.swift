@@ -62,6 +62,8 @@ private struct DashboardContent: View {
 
     @Environment(\.modelContext) private var modelContext
 
+    @Injected(\.staleTimeoutStore) private var staleTimeoutStore: StaleTimeoutStore
+
     @Query(sort: \AgentTask.updatedAt, order: .reverse)
     private var tasks: [AgentTask]
 
@@ -76,52 +78,57 @@ private struct DashboardContent: View {
     let onDemoPush: () -> Void
     let onGoToSetup: () -> Void
 
+    /// 派生有效状态:running 超过阈值 → stale。视图渲染时按 now 惰性计算。
+    private func effective(_ task: AgentTask) -> AgentStatus {
+        task.effectiveStatus(now: Date(), threshold: staleTimeoutStore.threshold())
+    }
+
     private var activeTasks: [AgentTask] {
         tasks
-            .filter { !$0.status.isTerminal && !$0.isArchived }
+            .filter { !effective($0).isTerminal && !$0.isArchived }
             .sorted(by: prioritySort)
     }
 
     private var needsYouTasks: [AgentCardData] {
         activeTasks
-            .filter { $0.status.mcBucket == .needsYou }
-            .map(AgentCardData.fromTask)
+            .filter { effective($0).mcBucket == .needsYou }
+            .map { AgentCardData.fromTask($0, status: effective($0)) }
     }
 
     private var runningTasks: [AgentCardData] {
         activeTasks
-            .filter { $0.status.mcBucket == .running }
-            .map(AgentCardData.fromTask)
+            .filter { effective($0).mcBucket == .running }
+            .map { AgentCardData.fromTask($0, status: effective($0)) }
     }
 
     private var settledDoneTasks: [AgentCardData] {
         tasks
-            .filter { !$0.isArchived && $0.status == .done }
-            .map(AgentCardData.fromTask)
+            .filter { !$0.isArchived && effective($0) == .done }
+            .map { AgentCardData.fromTask($0, status: effective($0)) }
     }
 
     private var settledFailedTasks: [AgentCardData] {
         tasks
-            .filter { !$0.isArchived && $0.status == .failed }
-            .map(AgentCardData.fromTask)
+            .filter { !$0.isArchived && effective($0) == .failed }
+            .map { AgentCardData.fromTask($0, status: effective($0)) }
     }
 
     private var counts: AgentHeroCounts {
         AgentHeroCounts(
-            running: tasks.filter { !$0.isArchived && $0.status == .running }.count,
-            waiting: tasks.filter { !$0.isArchived && $0.status == .waitingInput }.count,
-            blocked: tasks.filter { !$0.isArchived && $0.status == .blocked }.count,
-            failed: tasks.filter { !$0.isArchived && $0.status == .failed }.count,
-            stale: tasks.filter { !$0.isArchived && $0.status == .stale }.count,
-            done: tasks.filter { $0.status == .done }.count,
-            active: tasks.filter { !$0.isArchived && !$0.status.isTerminal }.count
+            running: tasks.filter { !$0.isArchived && effective($0) == .running }.count,
+            waiting: tasks.filter { !$0.isArchived && effective($0) == .waitingInput }.count,
+            blocked: tasks.filter { !$0.isArchived && effective($0) == .blocked }.count,
+            failed: tasks.filter { !$0.isArchived && effective($0) == .failed }.count,
+            stale: tasks.filter { !$0.isArchived && effective($0) == .stale }.count,
+            done: tasks.filter { effective($0) == .done }.count,
+            active: tasks.filter { !$0.isArchived && !effective($0).isTerminal }.count
         )
     }
 
     private var historyPreview: [HistoryItemData] {
         let terminalTasks = tasks
-            .filter { $0.status.isTerminal || $0.isArchived }
-            .map(HistoryItemData.fromTask)
+            .filter { effective($0).isTerminal || $0.isArchived }
+            .map { HistoryItemData.fromTask($0, status: effective($0)) }
         let inboxRows = inboxItems.map(HistoryItemData.fromInboxItem)
         return (terminalTasks + inboxRows)
             .sorted { $0.updatedAt > $1.updatedAt }
@@ -362,7 +369,7 @@ private struct DashboardContent: View {
     @ViewBuilder
     private func agentContextMenu(for id: UUID) -> some View {
         if let task = tasks.first(where: { $0.id == id }) {
-            ShareLink(item: AgentShareSnippet.text(from: AgentCardData.fromTask(task))) {
+            ShareLink(item: AgentShareSnippet.text(from: AgentCardData.fromTask(task, status: effective(task)))) {
                 Label("Share status", systemImage: "square.and.arrow.up")
             }
             Button(task.isPinned ? "Unpin" : "Pin") { togglePin(task) }
@@ -375,9 +382,9 @@ private struct DashboardContent: View {
     /// Mock 契约 prioritySort:pinned → status.sortPriority → 字典序 displayName。
     private func prioritySort(_ lhs: AgentTask, _ rhs: AgentTask) -> Bool {
         if lhs.isPinned != rhs.isPinned { return lhs.isPinned && !rhs.isPinned }
-        if lhs.status.sortPriority != rhs.status.sortPriority {
-            return lhs.status.sortPriority < rhs.status.sortPriority
-        }
+        let lp = effective(lhs).sortPriority
+        let rp = effective(rhs).sortPriority
+        if lp != rp { return lp < rp }
         return lhs.displayName < rhs.displayName
     }
 
@@ -449,12 +456,12 @@ struct MCGhostButtonStyle: ButtonStyle {
 // MARK: - View-model bridging
 
 extension AgentCardData {
-    static func fromTask(_ task: AgentTask) -> AgentCardData {
+    static func fromTask(_ task: AgentTask, status: AgentStatus) -> AgentCardData {
         AgentCardData(
             id: task.id,
             agentName: task.displayName,
             taskID: task.taskID,
-            status: task.status,
+            status: status,
             latestStep: task.latestStepTitle ?? "No step yet",
             progressLabel: task.progress,
             progressFraction: Self.progressFraction(from: task.progress),
@@ -509,10 +516,10 @@ extension HistoryItemData {
     ///   - stale → [ STALE ] (kind = .stale, 时间衰退色)
     ///   - failed → [ AGT-FAIL ]
     ///   - done / 其它 archived → [ AGT-DONE ]
-    static func fromTask(_ task: AgentTask) -> HistoryItemData {
+    static func fromTask(_ task: AgentTask, status: AgentStatus) -> HistoryItemData {
         let kind: HistoryItemKind
         let badge: String
-        switch task.status {
+        switch status {
         case .stale:
             kind = .stale
             badge = "stale"

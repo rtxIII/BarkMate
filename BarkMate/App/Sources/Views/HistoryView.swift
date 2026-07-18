@@ -9,7 +9,9 @@
 
 import SwiftUI
 import SwiftData
+import Factory
 import Models
+import Store
 import DesignSystem
 
 struct HistoryView: View {
@@ -22,17 +24,24 @@ struct HistoryView: View {
 
     @State private var filter: HistoryFilter = .all
 
+    @Injected(\.staleTimeoutStore) private var staleTimeoutStore: StaleTimeoutStore
+
+    /// 派生有效状态:running 超过阈值 → stale。视图渲染时按 now 惰性计算。
+    private func effective(_ task: AgentTask) -> AgentStatus {
+        task.effectiveStatus(now: Date(), threshold: staleTimeoutStore.threshold())
+    }
+
     /// status == .stale 的 task。mock B 顶部 STALE AGENTS heads-up 段独立展示,
     /// 不混入下方 timeline。
     private var staleTasks: [AgentTask] {
-        tasks.filter { !$0.isArchived && $0.status == .stale }
+        tasks.filter { !$0.isArchived && effective($0) == .stale }
     }
 
     private var items: [HistoryItemData] {
         // mock B 顶部 STALE 段独立高亮, 但 timeline 仍包含 stale 行(双重显示是有意的)。
         let archivedTasks = tasks
-            .filter { $0.status.isTerminal || $0.isArchived || $0.status == .stale }
-            .map(HistoryItemData.fromTask)
+            .filter { effective($0).isTerminal || $0.isArchived || effective($0) == .stale }
+            .map { HistoryItemData.fromTask($0, status: effective($0)) }
         let inboxRows = inboxItems.map(HistoryItemData.fromInboxItem)
         let merged = (archivedTasks + inboxRows)
             .filter(filter.matches)

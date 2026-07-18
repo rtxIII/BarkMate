@@ -22,7 +22,7 @@ final class DashboardMappingTests: XCTestCase {
             updatedAt: Date(timeIntervalSinceNow: -5 * 60)
         )
 
-        let data = AgentCardData.fromTask(task)
+        let data = AgentCardData.fromTask(task, status: task.status)
 
         XCTAssertEqual(data.id, task.id)
         XCTAssertEqual(data.agentName, "codex-unit-tests")
@@ -52,9 +52,9 @@ final class DashboardMappingTests: XCTestCase {
         let failed = makeTask(displayName: "Failed task", status: .failed, latestStepTitle: "Broken")
         let stale = makeTask(displayName: "Stale task", status: .stale, latestStepTitle: nil)
 
-        let doneItem = HistoryItemData.fromTask(done)
-        let failedItem = HistoryItemData.fromTask(failed)
-        let staleItem = HistoryItemData.fromTask(stale)
+        let doneItem = HistoryItemData.fromTask(done, status: done.status)
+        let failedItem = HistoryItemData.fromTask(failed, status: failed.status)
+        let staleItem = HistoryItemData.fromTask(stale, status: stale.status)
 
         XCTAssertEqual(doneItem.kind, HistoryItemKind.agent)
         XCTAssertEqual(doneItem.kindBadge, "agt-done")
