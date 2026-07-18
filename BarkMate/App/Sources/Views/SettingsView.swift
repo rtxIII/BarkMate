@@ -18,6 +18,7 @@ struct SettingsView: View {
 
     @Injected(\.deviceTokenStore) private var tokenStore: DeviceTokenStore
     @Injected(\.alertSoundStore) private var alertSoundStore: AlertSoundStore
+    @Injected(\.staleTimeoutStore) private var staleTimeoutStore: StaleTimeoutStore
 
     @Query(sort: \Server.createdAt, order: .reverse)
     private var servers: [Server]
@@ -30,6 +31,7 @@ struct SettingsView: View {
     @State private var showSetupGuide: Bool = false
     @State private var showServerList: Bool = false
     @State private var showSoundPicker: Bool = false
+    @State private var showStalePicker: Bool = false
 
     @EnvironmentObject private var selectedTab: SelectedTab
     @Environment(\.openURL) private var openURL
@@ -66,10 +68,14 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings-manage-servers")
 
                     MCSectionHeader("Agent behavior", trailing: "defaults")
-                    MCSettingRow(
-                        title: "Stale timeout",
-                        detail: "Running > this window → auto-demote to History · Stale."
-                    ) { MCSettingValue("30 min") }
+                    Button { showStalePicker = true } label: {
+                        MCSettingRow(
+                            title: "Stale timeout",
+                            detail: "Running > this window → auto-demote to History · Stale."
+                        ) { MCSettingValue(staleTimeoutStore.threshold().displayLabel) }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-stale-timeout")
 
                     MCSectionHeader("Alerts", trailing: "02 rules")
                     MCSettingRow(
@@ -152,6 +158,9 @@ struct SettingsView: View {
         }
         .navigationDestination(isPresented: $showSoundPicker) {
             AlertSoundPickerView()
+        }
+        .navigationDestination(isPresented: $showStalePicker) {
+            StaleTimeoutPickerView()
         }
         .onAppear { consumePendingDeepLinkIfNeeded() }
         .onChange(of: selectedTab.pendingDeepLink) { _, _ in

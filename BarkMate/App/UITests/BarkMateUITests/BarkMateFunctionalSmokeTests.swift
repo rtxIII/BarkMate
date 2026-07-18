@@ -362,6 +362,22 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
         XCTAssertTrue(bell.isSelected, app.debugDescription)
     }
 
+    func testStaleTimeoutPickerOpensAndSelects() {
+        launchApp()
+
+        app.buttons["tab-settings"].tap()
+
+        let row = app.buttons["settings-stale-timeout"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5), app.debugDescription)
+        row.tap()
+
+        let option = app.buttons["stale-option-60min"]
+        XCTAssertTrue(option.waitForExistence(timeout: 5), app.debugDescription)
+        option.tap()
+
+        XCTAssertTrue(option.isSelected, app.debugDescription)
+    }
+
     func testSettingsExternalLinkRowsAreTappable() {
         launchApp()
 
