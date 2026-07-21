@@ -42,7 +42,7 @@ iPhone 弹出标题为 **first push** 的通知即接入成功。没收到？看
 
 `SubagentStop` 默认静默，避免子任务噪音轰炸。
 
-**多个 Claude 窗口自动分卡**：Claude Code 钩子会按当前项目目录（`cwd`）把推送归到 `claude:<项目名>`，不同项目的 console 在 Dashboard 上分成独立卡片、通知也按项目分线程；同项目的多个会话按 session 各自成卡。无需手动配置。改动过安装脚本后需**重跑安装命令**才会重新生成 `bark-push` 生效。
+**多个 Claude 窗口自动分卡**：Claude Code 钩子会按当前项目目录（`cwd`）把推送归到 `claude:<项目名>`，不同项目的 console 在 Dashboard 上分成独立卡片、通知也按项目分线程；同项目的多个会话按 session 各自成卡。通知标题也带上工具与项目名（如 `Claude · BarkAgent`），状态文案落到副文本，多条推送堆叠时一眼可辨。无需手动配置。改动过安装脚本后需**重跑安装命令**才会重新生成 `bark-push` 生效。
 
 ## 自建 agent 直接调 bark-push
 

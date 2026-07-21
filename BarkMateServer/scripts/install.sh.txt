@@ -170,11 +170,16 @@ if [ -n "\${FROM}" ]; then
       # Last-resort fallback must not collapse to one shared key across consoles;
       # bind it to the project so distinct projects never merge into one task.
       [ -z "\${TASK}" ]  && TASK="session-\${PROJ:-default}"
+      # Human-facing banner label — "Claude · <proj>" keeps stacked
+      # notifications distinguishable; the status text moves to the body.
+      LABEL="Claude"
+      [ -n "\${PROJ}" ] && LABEL="Claude · \${PROJ}"
       case "\${EVT}" in
         Notification|notification)
           STATUS="\${STATUS:-waiting_input}"
-          [ -z "\${TITLE}" ] && TITLE="\$(jq_get '.message')"
-          [ -z "\${TITLE}" ] && TITLE="Claude needs your input"
+          MSG="\$(jq_get '.message')"
+          [ -z "\${BODY}" ]  && BODY="\${MSG:-Waiting for your input}"
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
         SubagentStop|subagent_stop)
           # Subagent turns are internal — don't spam the user. Installer
@@ -184,18 +189,20 @@ if [ -n "\${FROM}" ]; then
           ;;
         Stop|stop)
           STATUS="\${STATUS:-done}"
-          [ -z "\${TITLE}" ] && TITLE="Claude turn complete"
+          [ -z "\${BODY}" ]  && BODY="Turn complete"
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
         *)
           # Fallback: payload has .message → treat as notification
           MSG="\$(jq_get '.message')"
           if [ -n "\${MSG}" ]; then
             STATUS="\${STATUS:-waiting_input}"
-            TITLE="\${TITLE:-\$MSG}"
+            [ -z "\${BODY}" ] && BODY="\${MSG}"
           else
             STATUS="\${STATUS:-done}"
-            TITLE="\${TITLE:-Claude event}"
+            [ -z "\${BODY}" ] && BODY="Event"
           fi
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
       esac
       ;;
@@ -204,24 +211,37 @@ if [ -n "\${FROM}" ]; then
       [ -z "\${AGENT}" ] && AGENT="codex"
       [ -z "\${TASK}" ]  && TASK="\$(jq_get '.session_id')"
       [ -z "\${TASK}" ]  && TASK="session"
+      # Project label from cwd when present — same distinguishability win as
+      # Claude. Falls back to bare "Codex" when the hook payload omits cwd.
+      CWD="\$(jq_get '.cwd')"
+      LABEL="Codex"
+      if [ -n "\${CWD}" ]; then
+        PROJ="\$(basename "\${CWD}" 2>/dev/null)" || PROJ=""
+        PROJ="\$(printf '%s' "\${PROJ}" | tr -d ':' | tr -s '[:space:]' '_')"
+        [ -n "\${PROJ}" ] && LABEL="Codex · \${PROJ}"
+      fi
       case "\${EVT}" in
         SessionStart|session_start)
           STATUS="\${STATUS:-running}"
-          [ -z "\${TITLE}" ] && TITLE="Codex session started"
+          [ -z "\${BODY}" ]  && BODY="Session started"
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
         PermissionRequest|permission_request)
           STATUS="\${STATUS:-waiting_input}"
-          [ -z "\${TITLE}" ] && TITLE="Codex needs approval"
           [ -z "\${BODY}" ]  && BODY="\$(jq_get '.reason')"
+          [ -z "\${BODY}" ]  && BODY="Needs approval"
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
         Stop|stop)
           STATUS="\${STATUS:-done}"
-          [ -z "\${TITLE}" ] && TITLE="\$(jq_get '.last_assistant_message | .[0:120]')"
-          [ -z "\${TITLE}" ] && TITLE="Codex turn complete"
+          [ -z "\${BODY}" ]  && BODY="\$(jq_get '.last_assistant_message | .[0:120]')"
+          [ -z "\${BODY}" ]  && BODY="Turn complete"
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
         *)
           STATUS="\${STATUS:-done}"
-          TITLE="\${TITLE:-\${EVT:-Codex event}}"
+          [ -z "\${BODY}" ]  && BODY="\${EVT:-Event}"
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
       esac
       ;;
@@ -231,16 +251,25 @@ if [ -n "\${FROM}" ]; then
       [ -z "\${AGENT}" ] && AGENT="codex"
       [ -z "\${TASK}" ]  && TASK="\$(jq_get '."thread-id"')"
       [ -z "\${TASK}" ]  && TASK="session"
+      CWD="\$(jq_get '.cwd')"
+      LABEL="Codex"
+      if [ -n "\${CWD}" ]; then
+        PROJ="\$(basename "\${CWD}" 2>/dev/null)" || PROJ=""
+        PROJ="\$(printf '%s' "\${PROJ}" | tr -d ':' | tr -s '[:space:]' '_')"
+        [ -n "\${PROJ}" ] && LABEL="Codex · \${PROJ}"
+      fi
       TYPE="\$(jq_get '.type')"
       case "\${TYPE}" in
         agent-turn-complete|*complete*)
           STATUS="\${STATUS:-done}"
-          [ -z "\${TITLE}" ] && TITLE="\$(jq_get '."last-assistant-message" | .[0:120]')"
-          [ -z "\${TITLE}" ] && TITLE="Codex turn complete"
+          [ -z "\${BODY}" ]  && BODY="\$(jq_get '."last-assistant-message" | .[0:120]')"
+          [ -z "\${BODY}" ]  && BODY="Turn complete"
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
         *)
           STATUS="\${STATUS:-done}"
-          TITLE="\${TITLE:-\${TYPE:-Codex notify}}"
+          [ -z "\${BODY}" ]  && BODY="\${TYPE:-Notify}"
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
       esac
       ;;
@@ -445,19 +474,25 @@ const plugin: Plugin = async () => ({
   event: async ({ event }: { event: { type: string; properties?: Record<string, any> } }) => {
     const p = event.properties ?? {};
     const sessionId = p.sessionId ?? p.session_id ?? "session";
+    // Project label from cwd keeps stacked notifications distinguishable;
+    // status text goes to the body. Directory ':' would collide with the
+    // client's aggregateKey separator, so strip it.
+    const cwd = typeof p.cwd === "string" && p.cwd ? p.cwd : (typeof process !== "undefined" ? process.cwd() : "");
+    const proj = cwd ? cwd.split("/").filter(Boolean).pop()?.replace(/:/g, "").replace(/\\s+/g, "_") : "";
+    const label = proj ? \`OpenCode · \${proj}\` : "OpenCode";
     const common = { agent_id: "opencode", task_id: String(sessionId), group: "opencode" };
     switch (event.type) {
       case "session.created":
-        await push({ ...common, agent_status: "running", title: "OpenCode session started" });
+        await push({ ...common, agent_status: "running", title: label, body: "Session started" });
         break;
       case "session.idle":
-        await push({ ...common, agent_status: "done", title: "OpenCode turn complete" });
+        await push({ ...common, agent_status: "done", title: label, body: "Turn complete" });
         break;
       case "session.error":
-        await push({ ...common, agent_status: "failed", title: "OpenCode error", body: p.error ?? "" });
+        await push({ ...common, agent_status: "failed", title: label, body: p.error ?? "Error" });
         break;
       case "permission.asked":
-        await push({ ...common, agent_status: "waiting_input", title: p.title ?? "OpenCode needs permission", body: p.detail ?? "" });
+        await push({ ...common, agent_status: "waiting_input", title: label, body: p.detail ?? p.title ?? "Needs permission" });
         break;
     }
   },
