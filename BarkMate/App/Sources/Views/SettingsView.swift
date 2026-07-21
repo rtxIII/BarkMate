@@ -49,35 +49,8 @@ struct SettingsView: View {
                 .padding(.bottom, 14)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    MCSectionHeader("Servers", trailing: serversTrailing)
-                    ForEach(servers) { server in
-                        MCSettingRow(
-                            title: server.name ?? server.address,
-                            detail: serverDetail(server)
-                        ) {
-                            MCSettingStateBadge(serverBadgeLabel(server), color: serverBadgeColor(server))
-                        }
-                    }
-                    Button { showServerList = true } label: {
-                        MCSettingRow(
-                            title: "Manage servers",
-                            detail: "Add / remove / health check."
-                        ) { MCSettingValue("open") }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings-manage-servers")
-
-                    MCSectionHeader("Agent behavior", trailing: "defaults")
-                    Button { showStalePicker = true } label: {
-                        MCSettingRow(
-                            title: "Stale timeout",
-                            detail: "Running > this window → auto-demote to History · Stale."
-                        ) { MCSettingValue(staleTimeoutStore.threshold().displayLabel) }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings-stale-timeout")
-
-                    MCSectionHeader("Alerts", trailing: "02 rules")
+                    // MARK: CONFIG — 就地操作 / 值选择,当场改设置
+                    MCSectionHeader("Config", trailing: "adjust here")
                     MCSettingRow(
                         title: "Time-Sensitive alerts",
                         detail: "wait_input · blocked · failed break quiet mode."
@@ -92,38 +65,25 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings-alert-sound")
-
-                    MCSectionHeader("Hooks", trailing: "agent integration")
-                    MCSettingRow(
-                        title: "Auto-installed",
-                        detail: hooksDetail
-                    ) {
-                        MCSettingStateBadge(hooksBadgeText, color: hooksBadgeColor)
-                    }
-                    Button { showSetupGuide = true } label: {
+                    Button { showStalePicker = true } label: {
                         MCSettingRow(
-                            title: "Re-run installer",
-                            detail: "One-line script · re-detects ~/.claude · ~/.codex · ~/.opencode."
-                        ) { MCSettingValue("open ›") }
+                            title: "Stale timeout",
+                            detail: "Running > this window → auto-demote to History · Stale."
+                        ) { MCSettingValue(staleTimeoutStore.threshold().displayLabel) }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings-rerun-installer")
+                    .accessibilityIdentifier("settings-stale-timeout")
 
-                    MCSectionHeader("Privacy", trailing: "local")
-                    MCSettingRow(
-                        title: "Analytics",
-                        detail: "None. Summary prompts never leave iPhone."
-                    ) { MCSettingValue("off", tone: .dim) }
-                    Button { openURL(Self.privacyPolicyURL) } label: {
+                    // MARK: STATUS — 只读,不操作也不跳转
+                    MCSectionHeader("Status", trailing: serversTrailing)
+                    ForEach(servers) { server in
                         MCSettingRow(
-                            title: "Privacy policy",
-                            detail: "Required by App Store · barkagent.we2.xyz/privacy."
-                        ) { MCSettingValue("view ›", tone: .dim) }
+                            title: server.name ?? server.address,
+                            detail: serverDetail(server)
+                        ) {
+                            MCSettingStateBadge(serverBadgeLabel(server), color: serverBadgeColor(server))
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings-privacy-policy")
-
-                    MCSectionHeader("Device", trailing: "APNs")
                     MCSettingRow(
                         title: "APNs token",
                         detail: tokenPreview
@@ -134,7 +94,34 @@ struct SettingsView: View {
                         )
                     }
 
-                    MCSectionHeader("About", trailing: "v\(appVersion)")
+                    // MARK: ROUTES — 跳转入口 & 外链
+                    MCSectionHeader("Routes", trailing: "entries & links")
+                    Button { showServerList = true } label: {
+                        MCSettingRow(
+                            title: "Manage servers",
+                            detail: "Add / remove / health check."
+                        ) { MCSettingValue("open") }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-manage-servers")
+                    Button { showSetupGuide = true } label: {
+                        MCSettingRow(
+                            title: "Auto-installed",
+                            detail: hooksDetail
+                        ) {
+                            MCSettingStateBadge(hooksBadgeText, color: hooksBadgeColor)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-rerun-installer")
+                    Button { openURL(Self.privacyPolicyURL) } label: {
+                        MCSettingRow(
+                            title: "Privacy policy",
+                            detail: "Required by App Store · barkagent.we2.xyz/privacy."
+                        ) { MCSettingValue("view ›", tone: .dim) }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings-privacy-policy")
                     Button { openURL(Self.barkReferenceURL) } label: {
                         MCSettingRow(
                             title: "Bark protocol reference",
@@ -193,8 +180,8 @@ struct SettingsView: View {
 
     private var hooksDetail: String {
         hasReceivedAgentPush
-            ? "Claude (Stop · Notification) · Codex (on_block) · OpenCode (event:*)."
-            : "Run the install script on your machine to wire up Claude / Codex / OpenCode."
+            ? "Claude (Stop · Notification) · Codex (on_block) · OpenCode (event:*). Tap to re-run installer."
+            : "Tap to run the one-line installer for Claude · Codex · OpenCode."
     }
 
     private var serversTrailing: String {

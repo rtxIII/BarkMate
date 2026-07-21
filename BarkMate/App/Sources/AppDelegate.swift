@@ -14,7 +14,7 @@ import UserNotifications
 import Factory
 import Store
 
-final class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     @Injected(\.pushRegistrar) private var pushRegistrar: PushRegistrar
     @Injected(\.pendingQueueDrainer) private var pendingQueueDrainer: PendingQueueDrainer
@@ -24,6 +24,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        // 前台通知呈现钩子:app 在前台时,只要有通知要展示,系统必定回调 willPresent。
+        // 这是"前台收到推送"的可靠信号(比 NSE 的 Darwin 刷新信号更确定)。
+        UNUserNotificationCenter.current().delegate = self
         #if DEBUG
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             dprint("[BarkAgent] XCTest host launch, skipping app startup side effects")
@@ -73,6 +76,29 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             detail: error.localizedDescription
         ))
     }
+
+    // MARK: - 前台推送呈现
+
+    /// app 在前台收到推送:返回 `.sound`(保留推送声)+ `.list`(留在通知中心),
+    /// 但不含 `.banner` —— 前台不弹系统横幅。同时广播应内事件,由 MainTabView 弹 toast。
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        let content = notification.request.content
+        let message = content.title.isEmpty ? content.body : content.title
+        NotificationCenter.default.post(
+            name: Self.foregroundPushDidArrive,
+            object: nil,
+            userInfo: message.isEmpty ? nil : [Self.foregroundPushMessageKey: message]
+        )
+        completionHandler([.sound, .list])
+    }
+
+    /// 前台收到推送的应内事件。userInfo[foregroundPushMessageKey] 为可选标题文案。
+    static let foregroundPushDidArrive = Notification.Name("com.barkagent.foregroundPushDidArrive")
+    static let foregroundPushMessageKey = "message"
 
     @MainActor
     private func requestAuthorizationAndRegister(application: UIApplication) async {

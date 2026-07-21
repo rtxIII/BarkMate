@@ -46,6 +46,10 @@ struct MainTabView: View {
     @Injected(\.notificationStatusStore) private var statusStore: NotificationStatusStore
     @State private var appliedOnboardingRedirect: Bool = false
 
+    /// 前台收到推送时的瞬态提示文案(nil = 不显示)。约 2s 自隐。
+    @State private var pushToast: String?
+    @State private var pushToastHideTask: DispatchWorkItem?
+
     private let tabItems: [MCTabBarItem<AppTab>] = [
         MCTabBarItem(id: .agents, glyph: "▦", label: "Agents"),
         MCTabBarItem(id: .history, glyph: "※", label: "History"),
@@ -64,12 +68,63 @@ struct MainTabView: View {
         }
         .background(MissionControl.Color.background)
         .environmentObject(selection)
+        .overlay(alignment: .top) {
+            if let pushToast {
+                pushToastView(pushToast)
+                    .padding(.horizontal, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: pushToast)
         .onAppear {
             applyOnboardingRedirectIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: NotificationStatusStore.didChangeNotification)) { _ in
             applyOnboardingRedirectIfNeeded()
         }
+        .onReceive(NotificationCenter.default.publisher(for: AppDelegate.foregroundPushDidArrive)) { note in
+            let message = note.userInfo?[AppDelegate.foregroundPushMessageKey] as? String
+            showPushToast(message)
+        }
+    }
+
+    /// 前台推送到达 toast:顶部滑入 cyan 色 `[ PUSH ] <标题>`,约 2s 自隐。
+    private func pushToastView(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("[ PUSH ]")
+                    .font(MissionControl.Font.jetBrainsMono(size: 9, weight: .bold))
+                    .tracking(1.3)
+                    .foregroundStyle(MissionControl.Color.cyan)
+                Text(message)
+                    .font(MissionControl.Font.jetBrainsMono(size: 11, weight: .regular))
+                    .foregroundStyle(MissionControl.Color.ink)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 12)
+        .padding(.leading, 16)
+        .padding(.trailing, 14)
+        .background(MissionControl.Color.hull)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(MissionControl.Color.cyan)
+                .frame(width: MissionControl.Border.statusMarker)
+                .shadow(color: MissionControl.Color.cyanGlow, radius: 12, x: 0, y: 0)
+        }
+        .overlay(
+            Rectangle()
+                .stroke(MissionControl.Color.cyan, lineWidth: MissionControl.Border.hairline)
+        )
+    }
+
+    private func showPushToast(_ message: String?) {
+        pushToast = message ?? "New push received."
+        pushToastHideTask?.cancel()
+        let task = DispatchWorkItem { pushToast = nil }
+        pushToastHideTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2, execute: task)
     }
 
     /// 当前 tab 对应的 NavigationStack。切 tab 时丢弃旧导航栈,简单稳定。
@@ -78,13 +133,13 @@ struct MainTabView: View {
     private var tabContent: some View {
         switch selection.current {
         case .agents:
-            NavigationStack { AgentDashboardView() }
+            NavigationStack { AgentDashboardView().enableInteractivePopGesture() }
         case .history:
-            NavigationStack { HistoryView() }
+            NavigationStack { HistoryView().enableInteractivePopGesture() }
         case .search:
             NavigationStack { SearchView() }
         case .settings:
-            NavigationStack { SettingsView() }
+            NavigationStack { SettingsView().enableInteractivePopGesture() }
         }
     }
 
@@ -99,6 +154,57 @@ struct MainTabView: View {
             appliedOnboardingRedirect = true
         case .ok, .unknown:
             break
+        }
+    }
+}
+
+// MARK: - 边缘返回手势恢复
+
+/// 各 push 详情页都用 `.toolbar(.hidden, for: .navigationBar)` 隐藏了系统导航栏,
+/// 而 UIKit 在隐藏导航栏时会自动禁用 `interactivePopGestureRecognizer`(从左边缘右滑返回)。
+/// 这里把该手势的 delegate 接管回来:仅当栈内有上一页时才允许触发,根页面不误触。
+extension View {
+    func enableInteractivePopGesture() -> some View {
+        background(InteractivePopGestureEnabler())
+    }
+}
+
+private struct InteractivePopGestureEnabler: UIViewControllerRepresentable {
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        ProxyViewController(coordinator: context.coordinator)
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+
+    /// 持有 delegate 引用(手势的 delegate 是 weak,需要有人强持有)。
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        weak var navigationController: UINavigationController?
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            (navigationController?.viewControllers.count ?? 0) > 1
+        }
+    }
+
+    /// 0×0 代理 VC:进入导航层级后接管边缘返回手势的 delegate。
+    private final class ProxyViewController: UIViewController {
+        private let coordinator: Coordinator
+
+        init(coordinator: Coordinator) {
+            self.coordinator = coordinator
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            guard let navigationController else { return }
+            coordinator.navigationController = navigationController
+            navigationController.interactivePopGestureRecognizer?.delegate = coordinator
+            navigationController.interactivePopGestureRecognizer?.isEnabled = true
         }
     }
 }

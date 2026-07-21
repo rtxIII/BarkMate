@@ -145,8 +145,7 @@ private struct DashboardContent: View {
             VStack(alignment: .leading, spacing: 0) {
                 MCConsoleHeader(
                     crumbs: ["OPS", "TODAY", todayLabel],
-                    title: "",
-                    italicAccent: "Today."
+                    title: ""
                 ) {
                     MCIconButton("⌁", action: onDemoPush)
                 }

@@ -30,7 +30,26 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
 
         app.buttons["tab-settings"].tap()
         XCTAssertTrue(app.staticTexts["Manage servers"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Re-run installer"].exists)
+        XCTAssertTrue(app.staticTexts["Auto-installed"].exists)
+    }
+
+    func testEdgeSwipePopsFromAgentDetail() {
+        launchApp(seedScenario: "agent-detail")
+
+        // 进入详情页(Dossier)。
+        let card = app.staticTexts["Codex Coverage Probe"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5), app.debugDescription)
+        card.firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Dossier"].waitForExistence(timeout: 3), app.debugDescription)
+
+        // 从屏幕左边缘向右滑 —— 隐藏导航栏后仍应触发系统的边缘返回手势。
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.0, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end)
+
+        // 回到 Dashboard:Dossier 消失、卡片重新出现。
+        XCTAssertTrue(card.waitForExistence(timeout: 3), app.debugDescription)
+        XCTAssertFalse(app.staticTexts["Dossier"].exists, app.debugDescription)
     }
 
     func testSettingsTimeSensitiveAlertsCanBeToggled() {
@@ -65,7 +84,6 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
             app.swipeUp()
         }
 
-        XCTAssertTrue(app.staticTexts["Analytics"].exists, app.debugDescription)
         XCTAssertTrue(app.staticTexts["Privacy policy"].exists, app.debugDescription)
         XCTAssertTrue(app.staticTexts["APNs token"].exists, app.debugDescription)
         XCTAssertTrue(app.staticTexts["Not yet registered"].exists, app.debugDescription)
@@ -116,6 +134,10 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
         app.buttons["setup-send-test-push"].tap()
 
         XCTAssertEqual(app.buttons["setup-send-test-push"].label, "SENT ✓")
+
+        XCTAssertTrue(app.buttons["setup-copy-uninstall"].exists)
+        app.buttons["setup-copy-uninstall"].tap()
+        XCTAssertEqual(app.buttons["setup-copy-uninstall"].label, "COPIED")
     }
 
     func testDashboardCanSendDemoPushFromEmptyState() {

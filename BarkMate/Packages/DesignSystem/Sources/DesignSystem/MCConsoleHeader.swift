@@ -41,23 +41,41 @@ public struct MCConsoleHeader<Trailing: View>: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            crumbsRow
-
-            HStack(alignment: .bottom) {
-                titleText
-                Spacer(minLength: 8)
-                trailing
-            }
-            .padding(.bottom, 12)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(MissionControl.Color.rule)
-                    .frame(height: MissionControl.Border.hairline)
+        Group {
+            if hasTitle {
+                VStack(alignment: .leading, spacing: 6) {
+                    crumbsRow
+                    titleRow
+                }
+            } else {
+                // 无标题模式:面包屑与 trailing 同处一行,底线下移到该行。
+                ruledRow { crumbsRow }
             }
         }
         .padding(.top, 6)
         .padding(.horizontal, 18)
+    }
+
+    private var hasTitle: Bool {
+        !title.isEmpty || (italicAccent.map { !$0.isEmpty } ?? false)
+    }
+
+    private var titleRow: some View {
+        ruledRow { titleText }
+    }
+
+    private func ruledRow<Leading: View>(@ViewBuilder leading: () -> Leading) -> some View {
+        HStack(alignment: .bottom) {
+            leading()
+            Spacer(minLength: 8)
+            trailing
+        }
+        .padding(.bottom, 12)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(MissionControl.Color.rule)
+                .frame(height: MissionControl.Border.hairline)
+        }
     }
 
     // MARK: - Crumbs
