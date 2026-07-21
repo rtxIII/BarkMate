@@ -28,19 +28,12 @@ final class BarkMateScreenshotRegressionTests: XCTestCase {
         assertMatchesScreenshot(named: "agent-detail")
     }
 
-    func testHistoryAndSearchScreenshotsMatchBaseline() {
+    func testHistoryScreenshotMatchesBaseline() {
         launchApp(seedScenario: "search-history")
 
         app.buttons["tab-history"].tap()
         XCTAssertTrue(app.staticTexts["History Stale Probe"].waitForExistence(timeout: 5), app.debugDescription)
         assertMatchesScreenshot(named: "history-seeded")
-
-        app.buttons["tab-search"].tap()
-        XCTAssertTrue(app.textFields["search-query-field"].waitForExistence(timeout: 5), app.debugDescription)
-        app.textFields["search-query-field"].tap()
-        app.textFields["search-query-field"].typeText("handoff")
-        XCTAssertTrue(app.staticTexts["Release handoff"].waitForExistence(timeout: 3), app.debugDescription)
-        assertMatchesScreenshot(named: "search-handoff")
     }
 
     func testSettingsSetupAndServerListScreenshotsMatchBaseline() {

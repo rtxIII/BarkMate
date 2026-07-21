@@ -30,10 +30,6 @@ struct ContentView: View {
             seedDenseDashboardScenario()
         case "search-history":
             seedSearchHistoryScenario()
-        case "search-status-filters":
-            seedSearchStatusFiltersScenario()
-        case "search-menu-filters":
-            seedSearchMenuFiltersScenario()
         case "server-health":
             seedServerHealthScenario()
         case "settings-statuses":
@@ -186,62 +182,6 @@ struct ContentView: View {
             createdAt: now.addingTimeInterval(-120),
             updatedAt: now.addingTimeInterval(-120)
         ))
-        try? modelContext.save()
-    }
-
-    private func seedSearchStatusFiltersScenario() {
-        let now = Date()
-        let fixtures: [(String, String, AgentStatus, String, TimeInterval)] = [
-            ("search-wait", "Search Wait Probe", .waitingInput, "Waiting for operator input", -240),
-            ("search-stuck", "Search Stuck Probe", .blocked, "Blocked on review", -180),
-            ("search-failure", "Search Failure Probe", .failed, "Build failed", -120),
-            ("search-done", "Search Done Probe", .done, "Released successfully", -60)
-        ]
-
-        for fixture in fixtures {
-            let task = AgentTask(
-                aggregateKey: AgentTask.aggregateKey(agentID: fixture.0, taskID: fixture.0.uppercased()),
-                agentID: fixture.0,
-                taskID: fixture.0.uppercased(),
-                displayName: fixture.1,
-                status: fixture.2,
-                latestStepTitle: fixture.3,
-                progress: fixture.2 == .done ? "100%" : "50%",
-                createdAt: now.addingTimeInterval(fixture.4 - 300),
-                updatedAt: now.addingTimeInterval(fixture.4)
-            )
-            modelContext.insert(task)
-        }
-        try? modelContext.save()
-    }
-
-    private func seedSearchMenuFiltersScenario() {
-        let now = Date()
-        let recentTask = AgentTask(
-            aggregateKey: AgentTask.aggregateKey(agentID: "menu-recent", taskID: "MENU-RECENT"),
-            agentID: "menu-recent",
-            taskID: "MENU-RECENT",
-            displayName: "Menu Recent Probe",
-            status: .done,
-            latestStepTitle: "Recent menu filter hit",
-            progress: "100%",
-            createdAt: now.addingTimeInterval(-600),
-            updatedAt: now.addingTimeInterval(-60)
-        )
-        let oldTask = AgentTask(
-            aggregateKey: AgentTask.aggregateKey(agentID: "menu-old", taskID: "MENU-OLD"),
-            agentID: "menu-old",
-            taskID: "MENU-OLD",
-            displayName: "Menu Old Probe",
-            status: .blocked,
-            latestStepTitle: "Older menu filter hit",
-            progress: "45%",
-            createdAt: now.addingTimeInterval(-10 * 24 * 3600),
-            updatedAt: now.addingTimeInterval(-10 * 24 * 3600)
-        )
-
-        modelContext.insert(recentTask)
-        modelContext.insert(oldTask)
         try? modelContext.save()
     }
 

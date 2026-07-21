@@ -43,24 +43,15 @@ final class BarkMateAppStoreScreenshotTests: XCTestCase {
         XCTAssertTrue(app.buttons["tab-history"].waitForExistence(timeout: 5), app.debugDescription)
         capture("03-history")
 
-        // 4. Search —— 输入命中 hero 的关键词。
-        app.buttons["tab-search"].tap()
-        let queryField = app.textFields["search-query-field"]
-        XCTAssertTrue(queryField.waitForExistence(timeout: 5), app.debugDescription)
-        queryField.tap()
-        queryField.typeText("refactor")
-        XCTAssertTrue(app.staticTexts["backend-refactor"].waitForExistence(timeout: 3), app.debugDescription)
-        capture("04-search")
-
-        // 5. Settings。
+        // 4. Settings。
         app.buttons["tab-settings"].tap()
         XCTAssertTrue(app.buttons["settings-manage-servers"].waitForExistence(timeout: 5), app.debugDescription)
-        capture("05-settings")
+        capture("04-settings")
 
-        // 6. Setup —— 从 settings 打开安装向导。
+        // 5. Setup —— 从 settings 打开安装向导。
         app.buttons["settings-rerun-installer"].tap()
         XCTAssertTrue(app.buttons["setup-copy-install"].waitForExistence(timeout: 3), app.debugDescription)
-        capture("06-setup")
+        capture("05-setup")
     }
 
     private func launchShowcase() {

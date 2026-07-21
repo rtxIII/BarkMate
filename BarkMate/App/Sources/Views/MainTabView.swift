@@ -3,7 +3,7 @@
 //  BarkAgent
 //
 //  V0.4 Phase 3.2 — Mission Control IA rewrite。
-//  Tab 顺序:Agents / History / Search / Settings(无 Setup tab)。
+//  Tab 顺序:Agents / History / Settings(无 Setup/Search tab)。
 //  Setup 收为 Settings 内的 "接入向导" 子页(NavigationLink push)。
 //
 //  V0.4 Day 9 修复:
@@ -19,7 +19,7 @@ import Store
 import DesignSystem
 
 enum AppTab: Hashable, CaseIterable {
-    case agents, history, search, settings
+    case agents, history, settings
 }
 
 /// SettingsView 内部的 deep link 目标。
@@ -53,7 +53,6 @@ struct MainTabView: View {
     private let tabItems: [MCTabBarItem<AppTab>] = [
         MCTabBarItem(id: .agents, glyph: "▦", label: "Agents"),
         MCTabBarItem(id: .history, glyph: "※", label: "History"),
-        MCTabBarItem(id: .search, glyph: "⌕", label: "Search"),
         MCTabBarItem(id: .settings, glyph: "⚙", label: "Settings")
     ]
 
@@ -136,8 +135,6 @@ struct MainTabView: View {
             NavigationStack { AgentDashboardView().enableInteractivePopGesture() }
         case .history:
             NavigationStack { HistoryView().enableInteractivePopGesture() }
-        case .search:
-            NavigationStack { SearchView() }
         case .settings:
             NavigationStack { SettingsView().enableInteractivePopGesture() }
         }
