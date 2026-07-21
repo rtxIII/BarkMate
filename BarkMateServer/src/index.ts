@@ -21,7 +21,7 @@ app.get('/info', (c) =>
       apns_env: c.env.APNS_ENV,
       apns_topic: c.env.APNS_TOPIC,
       auth_required: Boolean(c.env.BARKAGENT_AUTH_TOKEN),
-      capabilities: ['register', 'push', 'v0.3-fields', 'health', 'privacy-policy', 'liveactivity', 'install-script'],
+      capabilities: ['register', 'push', 'v0.3-fields', 'health', 'privacy-policy', 'liveactivity', 'install-script', 'uninstall-script'],
     }),
   ),
 );

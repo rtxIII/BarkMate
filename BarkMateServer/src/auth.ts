@@ -11,6 +11,7 @@ const PUBLIC_PATHS = new Set([
   '/privacy',
   '/privacy.txt',
   '/install.sh',
+  '/uninstall.sh',
   '/docs/cli-setup',
   '/docs/cli-setup.md',
 ]);

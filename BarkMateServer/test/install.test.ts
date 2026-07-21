@@ -18,6 +18,19 @@ describe('GET /install.sh', () => {
   });
 });
 
+describe('GET /uninstall.sh', () => {
+  it('serves the bash uninstaller as text/x-shellscript', async () => {
+    const response = await SELF.fetch('http://localhost/uninstall.sh');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toMatch(/text\/x-shellscript/);
+
+    const body = await response.text();
+    expect(body.startsWith('#!/usr/bin/env bash')).toBe(true);
+    expect(body).toContain('bark-push');
+    expect(body).toContain('BARK_RESTORE');
+  });
+});
+
 describe('GET /docs/cli-setup', () => {
   it('renders cli-setup.md as HTML', async () => {
     const response = await SELF.fetch('http://localhost/docs/cli-setup');

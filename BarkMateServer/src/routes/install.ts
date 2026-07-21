@@ -2,11 +2,13 @@
  * BarkMate CLI installer + documentation endpoints.
  *
  * - GET /install.sh         → text/x-shellscript (curl-piped installer)
+ * - GET /uninstall.sh       → text/x-shellscript (curl-piped uninstaller)
  * - GET /docs/cli-setup     → text/html (rendered docs page)
  * - GET /docs/cli-setup.md  → text/markdown (raw, for `curl`)
  *
  * Source files are bundled via wrangler `rules: type=Text`:
  * - ../../scripts/install.sh.txt
+ * - ../../scripts/uninstall.sh.txt
  * - ../../docs/cli-setup.md
  *
  * Markdown→HTML is a tiny inline renderer that only covers the subset used
@@ -17,12 +19,20 @@
 import { Hono } from 'hono';
 import type { Bindings } from '../types';
 import installScript from '../../scripts/install.sh.txt';
+import uninstallScript from '../../scripts/uninstall.sh.txt';
 import cliSetupMarkdown from '../../docs/cli-setup.md';
 
 export const installRoute = new Hono<{ Bindings: Bindings }>();
 
 installRoute.get('/install.sh', (c) =>
   c.body(installScript, 200, {
+    'content-type': 'text/x-shellscript; charset=utf-8',
+    'cache-control': 'public, max-age=300',
+  }),
+);
+
+installRoute.get('/uninstall.sh', (c) =>
+  c.body(uninstallScript, 200, {
     'content-type': 'text/x-shellscript; charset=utf-8',
     'cache-control': 'public, max-age=300',
   }),

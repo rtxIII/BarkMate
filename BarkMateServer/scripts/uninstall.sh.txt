@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+#
+# BarkMate — one-line hook uninstaller (reverse of install.sh)
+#
+# Usage:
+#   curl -fsSL https://barkagent.we2.xyz/uninstall.sh | sh
+#   curl -fsSL https://barkagent.we2.xyz/uninstall.sh | BARK_RESTORE=1 sh
+#
+# What it does:
+#   1. Removes bark-push from /usr/local/bin, ~/.local/bin, or wherever it
+#      resolves on PATH.
+#   2. Strips the BarkMate wiring from each detected tool:
+#        Claude Code → removes Notification + Stop hooks that call bark-push
+#        Codex CLI   → removes the notify line + PermissionRequest hook
+#        OpenCode    → deletes the barkmate.ts plugin + opencode.json entry
+#   3. Skips silently if a tool / entry is not present. Re-running is safe.
+#
+# Two removal modes:
+#   default        surgical — strips ONLY the BarkMate entries, leaving any of
+#                  your own hooks (and the *.barkmate.bak backups) untouched.
+#   BARK_RESTORE=1 restores each <file>.barkmate.bak over its config, reverting
+#                  the file to its exact pre-install state (and consuming the
+#                  backup). Falls back to surgical mode for files with no backup.
+#
+# Env:
+#   BARK_PREFIX   where bark-push was installed (default: auto-detect
+#                 /usr/local/bin then ~/.local/bin, plus PATH lookup)
+#   BARK_RESTORE  set to 1 to restore from *.barkmate.bak instead of stripping
+#
+# License: MIT
+
+set -eu
+
+# ── styling ──────────────────────────────────────────────────────────────────
+RESET='\033[0m'; DIM='\033[2m'; BOLD='\033[1m'
+OK='\033[1;32m'; WARN='\033[1;33m'; ERR='\033[1;31m'; INFO='\033[1;36m'
+say()  { printf '%b\n' "$*"; }
+ok()   { say "${OK}✓${RESET} $*"; }
+warn() { say "${WARN}!${RESET} $*"; }
+step() { say "${INFO}▸${RESET} ${BOLD}$*${RESET}"; }
+
+HAS_JQ=0; command -v jq >/dev/null 2>&1 && HAS_JQ=1
+RESTORE="${BARK_RESTORE:-0}"
+
+# Restore <file> from its .barkmate.bak when in restore mode and the backup
+# exists. Returns 0 if it restored (caller skips surgical edit), 1 otherwise.
+restore_or_edit() {
+  file="$1"
+  if [ "${RESTORE}" = "1" ] && [ -f "${file}.barkmate.bak" ]; then
+    mv "${file}.barkmate.bak" "${file}"
+    ok "restored ${file} from backup"
+    return 0
+  fi
+  return 1
+}
+
+# ── remove bark-push binary ──────────────────────────────────────────────────
+remove_bark_push() {
+  step "Removing bark-push"
+  found=""
+  for cand in \
+    "${BARK_PREFIX:+${BARK_PREFIX}/bark-push}" \
+    "/usr/local/bin/bark-push" \
+    "${HOME}/.local/bin/bark-push"; do
+    [ -n "${cand}" ] && [ -f "${cand}" ] || continue
+    rm -f "${cand}" && ok "removed ${cand}" && found=1
+  done
+  # Anything still resolvable on PATH we didn't cover above.
+  other="$(command -v bark-push 2>/dev/null || true)"
+  if [ -n "${other}" ] && [ -f "${other}" ]; then
+    rm -f "${other}" && ok "removed ${other}" && found=1
+  fi
+  [ -z "${found}" ] && say "${DIM}  · bark-push not found — skip${RESET}"
+  return 0
+}
+
+# ── Claude Code: ~/.claude/settings.json (Notification + Stop) ────────────────
+uninstall_claude() {
+  CLAUDE_CFG="${HOME}/.claude/settings.json"
+  if [ ! -f "${CLAUDE_CFG}" ]; then
+    say "${DIM}  · claude config not found — skip${RESET}"
+    return
+  fi
+  step "Removing Claude Code hooks ← ${CLAUDE_CFG}"
+  if restore_or_edit "${CLAUDE_CFG}"; then return; fi
+  if [ "${HAS_JQ}" -eq 0 ]; then
+    warn "jq not found — cannot edit ${CLAUDE_CFG}; remove bark-push hooks manually"
+    return
+  fi
+  TMP="$(mktemp)"
+  if jq '
+    # Drop bark-push hooks from an event array, then drop matchers left empty.
+    def strip($tag):
+      (. // [])
+      | map(.hooks = ((.hooks // []) | map(select((.command // "") | contains($tag) | not))))
+      | map(select((.hooks // []) | length > 0));
+    if (.hooks | type) == "object" then
+      .hooks.Notification = (.hooks.Notification | strip("bark-push --from claude"))
+      | .hooks.Stop       = (.hooks.Stop       | strip("bark-push --from claude"))
+      | (if (.hooks.Notification | length) == 0 then del(.hooks.Notification) else . end)
+      | (if (.hooks.Stop | length) == 0 then del(.hooks.Stop) else . end)
+    else . end
+  ' "${CLAUDE_CFG}" > "${TMP}"; then
+    mv "${TMP}" "${CLAUDE_CFG}"
+    ok "claude · BarkMate hooks removed"
+  else
+    rm -f "${TMP}"
+    warn "claude · ${CLAUDE_CFG} is not valid JSON — left unchanged"
+  fi
+}
+
+# ── Codex CLI: ~/.codex/config.toml notify + ~/.codex/hooks.json ─────────────
+uninstall_codex() {
+  CODEX_DIR="${HOME}/.codex"
+  CODEX_TOML="${CODEX_DIR}/config.toml"
+  CODEX_HOOKS="${CODEX_DIR}/hooks.json"
+  if [ ! -d "${CODEX_DIR}" ]; then
+    say "${DIM}  · codex not found at ~/.codex — skip${RESET}"
+    return
+  fi
+
+  if [ -f "${CODEX_TOML}" ]; then
+    step "Removing Codex notify ← ${CODEX_TOML}"
+    if ! restore_or_edit "${CODEX_TOML}"; then
+      # Remove only the notify line that points at bark-push codex-notify.
+      awk '
+        /^[[:space:]]*notify[[:space:]]*=/ && /bark-push/ && /codex-notify/ { next }
+        { print }
+      ' "${CODEX_TOML}" > "${CODEX_TOML}.tmp" \
+        && mv "${CODEX_TOML}.tmp" "${CODEX_TOML}"
+      ok "codex · notify removed"
+    fi
+  else
+    say "${DIM}  · codex config.toml not present${RESET}"
+  fi
+
+  if [ -f "${CODEX_HOOKS}" ]; then
+    step "Removing Codex PermissionRequest ← ${CODEX_HOOKS}"
+    if ! restore_or_edit "${CODEX_HOOKS}"; then
+      if [ "${HAS_JQ}" -eq 0 ]; then
+        warn "jq not found — cannot edit ${CODEX_HOOKS}; remove the bark-push hook manually"
+      else
+        TMP="$(mktemp)"
+        if jq '
+          def strip($tag):
+            (. // [])
+            | map(.hooks = ((.hooks // []) | map(select((.command // "") | contains($tag) | not))))
+            | map(select((.hooks // []) | length > 0));
+          if (.hooks | type) == "object" then
+            .hooks.PermissionRequest = (.hooks.PermissionRequest | strip("bark-push --from codex"))
+            | (if (.hooks.PermissionRequest | length) == 0 then del(.hooks.PermissionRequest) else . end)
+          else . end
+        ' "${CODEX_HOOKS}" > "${TMP}"; then
+          mv "${TMP}" "${CODEX_HOOKS}"
+          ok "codex · PermissionRequest removed"
+        else
+          rm -f "${TMP}"
+          warn "codex · ${CODEX_HOOKS} is not valid JSON — left unchanged"
+        fi
+      fi
+    fi
+  fi
+}
+
+# ── OpenCode: plugin file + opencode.json registration ───────────────────────
+uninstall_opencode() {
+  OPENCODE_GLOBAL=""
+  if [ -d "${XDG_CONFIG_HOME:-${HOME}/.config}/opencode" ]; then
+    OPENCODE_GLOBAL="${XDG_CONFIG_HOME:-${HOME}/.config}/opencode"
+  elif [ -d "${HOME}/.opencode" ]; then
+    OPENCODE_GLOBAL="${HOME}/.opencode"
+  fi
+  if [ -z "${OPENCODE_GLOBAL}" ]; then
+    say "${DIM}  · opencode not found (~/.config/opencode or ~/.opencode) — skip${RESET}"
+    return
+  fi
+
+  PLUGIN_FILE="${OPENCODE_GLOBAL}/plugins/barkmate.ts"
+  CFG_FILE="${OPENCODE_GLOBAL}/opencode.json"
+
+  step "Removing OpenCode plugin ← ${PLUGIN_FILE}"
+  if [ "${RESTORE}" = "1" ] && [ -f "${PLUGIN_FILE}.barkmate.bak" ]; then
+    mv "${PLUGIN_FILE}.barkmate.bak" "${PLUGIN_FILE}"
+    ok "opencode · plugin restored from backup"
+  elif [ -f "${PLUGIN_FILE}" ]; then
+    rm -f "${PLUGIN_FILE}" && ok "opencode · plugin file removed"
+  else
+    say "${DIM}  · plugin file not present — skip${RESET}"
+  fi
+
+  if [ -f "${CFG_FILE}" ]; then
+    step "Deregistering plugin ← ${CFG_FILE}"
+    if ! restore_or_edit "${CFG_FILE}"; then
+      if [ "${HAS_JQ}" -eq 0 ]; then
+        warn "jq not found — remove \"./plugins/barkmate.ts\" from ${CFG_FILE} manually"
+      else
+        TMP="$(mktemp)"
+        if jq '
+          if (.plugin | type) == "array" then
+            .plugin |= map(select(. != "./plugins/barkmate.ts"))
+            | (if (.plugin | length) == 0 then del(.plugin) else . end)
+          else . end
+        ' "${CFG_FILE}" > "${TMP}"; then
+          mv "${TMP}" "${CFG_FILE}"
+          ok "opencode · opencode.json deregistered"
+        else
+          rm -f "${TMP}"
+          warn "opencode · ${CFG_FILE} is not valid JSON — left unchanged"
+        fi
+      fi
+    fi
+  fi
+}
+
+# ── orchestrate ──────────────────────────────────────────────────────────────
+say ""
+if [ "${RESTORE}" = "1" ]; then
+  say "${BOLD}BarkMate uninstaller${RESET}  ${DIM}— restore mode (revert *.barkmate.bak backups)${RESET}"
+else
+  say "${BOLD}BarkMate uninstaller${RESET}  ${DIM}— surgical mode (strip BarkMate entries only)${RESET}"
+fi
+say ""
+
+remove_bark_push
+uninstall_claude
+uninstall_codex
+uninstall_opencode
+
+say ""
+ok "${BOLD}Done.${RESET} BarkMate hooks removed."
+say ""
+say "${DIM}Notes:${RESET}"
+say "  · Codex users: run ${BOLD}/hooks${RESET} once in the TUI to clear the removed hook from its cache."
+say "  · Surgical mode keeps any ${BOLD}*.barkmate.bak${RESET} backups; re-run with BARK_RESTORE=1 to revert & consume them."
+say "  · Re-install anytime: curl -fsSL ${BOLD}https://barkagent.we2.xyz/install.sh${RESET} | BARK_KEY=xxxx sh"

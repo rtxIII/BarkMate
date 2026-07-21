@@ -29,7 +29,7 @@
 	// Bundle the installer and cli-setup.md as Text modules so src/routes/install.ts
 	// can `import` them as strings (avoids inline escape gymnastics).
 	"rules": [
-		{ "type": "Text", "globs": ["scripts/install.sh.txt", "**/*.md"], "fallthrough": true }
+		{ "type": "Text", "globs": ["scripts/install.sh.txt", "scripts/uninstall.sh.txt", "**/*.md"], "fallthrough": true }
 	],
 	// 自定义域名（custom_domain）— Cloudflare 自动创建 DNS + TLS。
 	// 前提：we2.xyz 已是当前 Cloudflare 账号下的 zone。

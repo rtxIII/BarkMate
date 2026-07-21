@@ -18,7 +18,7 @@ curl -fsSL https://barkagent.we2.xyz/install.sh | BARK_KEY=your_key sh
 
 - 把 `bark-push` 装到 `/usr/local/bin`（不可写时退到 `~/.local/bin`）
 - 自动检测 `~/.claude` / `~/.codex` / `~/.config/opencode`，写入对应钩子
-- 未安装的工具静默跳过；重跑安全（每次写入前 `.bak.<ts>` 备份）
+- 未安装的工具静默跳过；重跑安全（首次写入前把原文件备份为 `<file>.barkmate.bak`，重跑不覆盖）
 
 ### 第 3 步：发一条测试推送
 
@@ -69,15 +69,23 @@ curl -fsSL https://barkagent.we2.xyz/install.sh | \
 
 ## 重装 / 卸载
 
-**重装**：直接重跑第 2 步的安装命令，旧 hook 自动备份为 `.bak.<timestamp>`。
+**重装**：直接重跑第 2 步的安装命令。仅**首次**安装时把原文件备份为 `<file>.barkmate.bak`，之后重跑不再覆盖该备份，始终保留接入 BarkMate 前的原始版本。
 
-**卸载**：
+**卸载**：一行反向清理，和安装对称。
 
 ```bash
-rm "$(command -v bark-push)"
+curl -fsSL https://barkagent.we2.xyz/uninstall.sh | sh
 ```
 
-然后手动从 `~/.claude/settings.json`、`~/.codex/config.toml`、`~/.codex/hooks.json`、`~/.config/opencode/opencode.json` 移除带 `barkmate` 或 `bark-push` 字样的条目；备份文件可参照还原。
+脚本会删除 `bark-push`，并从 `~/.claude/settings.json`、`~/.codex/config.toml`、`~/.codex/hooks.json`、`~/.config/opencode/opencode.json` 里**只**剔除 BarkMate 注入的条目（你自己的其他钩子原样保留），同时删掉 `barkmate.ts` 插件。未安装的工具静默跳过，重跑安全。
+
+想彻底还原到接入 BarkMate 之前的原始文件（用首次安装时留下的 `<file>.barkmate.bak` 覆盖回去并消费掉备份）：
+
+```bash
+curl -fsSL https://barkagent.we2.xyz/uninstall.sh | BARK_RESTORE=1 sh
+```
+
+Codex 用户卸载后在 TUI 执行一次 `/hooks` 清掉缓存里已移除的钩子。
 
 ## 故障排查
 
