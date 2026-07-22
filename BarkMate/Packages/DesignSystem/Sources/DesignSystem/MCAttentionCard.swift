@@ -52,8 +52,8 @@ public struct MCAttentionCard: View {
             }
 
             askBlock
-                .padding(.top, 12)
-                .padding(.bottom, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 10)
 
             HStack {
                 Text(data.updatedLabel)
@@ -66,7 +66,7 @@ public struct MCAttentionCard: View {
             .tracking(0.4)
             .foregroundStyle(MissionControl.Color.inkSoft)
         }
-        .padding(.vertical, 14)
+        .padding(.vertical, 12)
         .padding(.leading, 18)
         .padding(.trailing, 14)
         .background(
@@ -89,23 +89,11 @@ public struct MCAttentionCard: View {
     }
 
     private var agentNameText: some View {
-        let parts = data.agentName.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
-        if parts.count == 2 {
-            let head = Text(String(parts[0]) + "-")
-                .font(MissionControl.Font.interTight(size: 17, weight: .heavy))
-                .tracking(-0.42)
-                .foregroundStyle(MissionControl.Color.ink)
-            let accent = Text(String(parts[1]))
-                .font(MissionControl.Font.italicAccent(size: 17))
-                .foregroundStyle(MissionControl.Color.amber)
-            return AnyView(head + accent)
-        }
-        return AnyView(
-            Text(data.agentName)
-                .font(MissionControl.Font.interTight(size: 17, weight: .heavy))
-                .tracking(-0.42)
-                .foregroundStyle(MissionControl.Color.ink)
-        )
+        Text(data.agentName)
+            .font(MissionControl.Font.interTight(size: 17, weight: .heavy))
+            .tracking(-0.42)
+            .foregroundStyle(MissionControl.Color.ink)
+            .lineLimit(1)
     }
 
     private var askBlock: some View {
@@ -129,7 +117,7 @@ public struct MCAttentionCard: View {
 
     private var mcCodeLine: String? {
         var segments: [String] = []
-        if let taskID = data.taskID { segments.append(taskID) }
+        if let code = data.sessionCode { segments.append(code) }
         if let progress = data.progressLabel { segments.append(progress) }
         return segments.isEmpty ? nil : segments.joined(separator: " · ")
     }

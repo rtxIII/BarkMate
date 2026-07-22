@@ -3,7 +3,8 @@
 //  BarkAgent
 //
 //  V0.4 Day 5 — Mission Control 重写。
-//  布局换成 MCConsoleHeader + MCHeadsUpPanel + 三段 bucket(Needs you / Running / Settled)。
+//  布局:MCHeadsUpPanel + 三段 bucket(Needs you / Running / Settled),每段按
+//  project(agentID)分组;多 session 组用 MCProjectGroupCard 折叠,单 session 退化原生卡。
 //  数据流(@Query / @Injected / DemoPush / DarwinObserver)保持不变。
 //  FilterStrip / EmptyDashboardState 旧组件不再使用,因为 bucket 分组替代了 filter,
 //  empty 状态走 needsYou+running+settled 总数为 0 的判定。
@@ -21,6 +22,9 @@ struct AgentDashboardView: View {
 
     @State private var refreshToken: Int = 0
     @State private var darwinObserver: DarwinObserver?
+    /// 展开的 project 组名集合。托管在此(而非 DashboardContent),因为后者随
+    /// `.id(refreshToken)` 在每次推送到达时被整体重建,内部 @State 会被丢弃。
+    @State private var expandedProjects: Set<String> = []
 
     @Injected(\.pendingQueueDrainer) private var pendingQueueDrainer: PendingQueueDrainer
     @Injected(\.sharedModelContainer) private var modelContainer: ModelContainer
@@ -28,6 +32,7 @@ struct AgentDashboardView: View {
 
     var body: some View {
         DashboardContent(
+            expandedProjects: $expandedProjects,
             onRefresh: { await pendingQueueDrainer.drain() },
             onDemoPush: sendDemoPush,
             onGoToSetup: { selectedTab.requestSetupGuide() }
@@ -74,6 +79,7 @@ private struct DashboardContent: View {
     )
     private var inboxItems: [AgentInboxItem]
 
+    @Binding var expandedProjects: Set<String>
     let onRefresh: @Sendable () async -> Void
     let onDemoPush: () -> Void
     let onGoToSetup: () -> Void
@@ -113,6 +119,38 @@ private struct DashboardContent: View {
             .map { AgentCardData.fromTask($0, status: effective($0)) }
     }
 
+    // MARK: - Project grouping
+
+    /// 把已按 prioritySort 排好序的扁平卡数组,按 project(agentName)聚拢成组。
+    /// 组的先后顺序 = 该组内最高优先级卡在原数组中的首次出现位置,
+    /// 组内顺序沿用原数组顺序(即 prioritySort)。单 session 组由视图层退化为原生卡。
+    private func groupByProject(_ cards: [AgentCardData]) -> [AgentProjectGroup] {
+        var order: [String] = []
+        var buckets: [String: [AgentCardData]] = [:]
+        for card in cards {
+            if buckets[card.agentName] == nil {
+                order.append(card.agentName)
+            }
+            buckets[card.agentName, default: []].append(card)
+        }
+        return order.map { AgentProjectGroup(projectName: $0, cards: buckets[$0] ?? []) }
+    }
+
+    private var needsYouGroups: [AgentProjectGroup] { groupByProject(needsYouTasks) }
+    private var runningGroups: [AgentProjectGroup] { groupByProject(runningTasks) }
+    private var settledDoneGroups: [AgentProjectGroup] { groupByProject(settledDoneTasks) }
+    private var settledFailedGroups: [AgentProjectGroup] { groupByProject(settledFailedTasks) }
+
+    private func expandedBinding(for project: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedProjects.contains(project) },
+            set: { isOn in
+                if isOn { expandedProjects.insert(project) }
+                else { expandedProjects.remove(project) }
+            }
+        )
+    }
+
     private var counts: AgentHeroCounts {
         AgentHeroCounts(
             running: tasks.filter { !$0.isArchived && effective($0) == .running }.count,
@@ -143,14 +181,6 @@ private struct DashboardContent: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                MCConsoleHeader(
-                    crumbs: ["OPS", "TODAY", todayLabel],
-                    title: ""
-                ) {
-                    MCIconButton("⌁", action: onDemoPush)
-                }
-                .padding(.bottom, 14)
-
                 VStack(alignment: .leading, spacing: 0) {
                     MCHeadsUpPanel(counts: counts)
                         .padding(.bottom, 6)
@@ -182,64 +212,75 @@ private struct DashboardContent: View {
 
     @ViewBuilder
     private var bucketSections: some View {
-        if !needsYouTasks.isEmpty {
+        if !needsYouGroups.isEmpty {
             MCSectionHeader("Needs you", trailing: cardsLabel(needsYouTasks.count))
             VStack(spacing: 10) {
-                ForEach(needsYouTasks) { data in
-                    NavigationLink {
-                        AgentDetailView(taskID: data.id)
-                    } label: {
-                        MCAttentionCard(data: data)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu { agentContextMenu(for: data.id) }
+                ForEach(needsYouGroups) { group in
+                    projectGroupView(group, rowStyle: .attention)
                 }
             }
         }
 
-        if !runningTasks.isEmpty {
+        if !runningGroups.isEmpty {
             MCSectionHeader("Running", trailing: agentsLabel(runningTasks.count))
-            VStack(spacing: 0) {
-                ForEach(runningTasks) { data in
-                    NavigationLink {
-                        AgentDetailView(taskID: data.id)
-                    } label: {
-                        MCRunCompactRow(data: data)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu { agentContextMenu(for: data.id) }
+            VStack(spacing: 10) {
+                ForEach(runningGroups) { group in
+                    projectGroupView(group, rowStyle: .compact)
                 }
             }
         }
 
-        if !settledDoneTasks.isEmpty || !settledFailedTasks.isEmpty {
+        if !settledDoneGroups.isEmpty || !settledFailedGroups.isEmpty {
             MCSectionHeader("Settled", trailing: settledTrailingLabel)
-            VStack(spacing: 0) {
-                ForEach(settledDoneTasks) { data in
-                    NavigationLink {
-                        AgentDetailView(taskID: data.id)
-                    } label: {
-                        MCRunCompactRow(data: data)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu { agentContextMenu(for: data.id) }
+            VStack(spacing: 10) {
+                ForEach(settledDoneGroups) { group in
+                    projectGroupView(group, rowStyle: .compact)
                 }
             }
             // mock B 把 fail 卡放 Settled 段,用 MCAttentionCard.stuck 视觉(橙色 marker)显示。
-            if !settledFailedTasks.isEmpty {
+            if !settledFailedGroups.isEmpty {
                 VStack(spacing: 10) {
-                    ForEach(settledFailedTasks) { data in
-                        NavigationLink {
-                            AgentDetailView(taskID: data.id)
-                        } label: {
-                            MCAttentionCard(data: data)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu { agentContextMenu(for: data.id) }
+                    ForEach(settledFailedGroups) { group in
+                        projectGroupView(group, rowStyle: .attention)
                     }
                 }
-                .padding(.top, settledDoneTasks.isEmpty ? 0 : 10)
+                .padding(.top, settledDoneGroups.isEmpty ? 0 : 10)
             }
+        }
+    }
+
+    /// 组内单卡样式:needs-you / fail 段用大 attention 卡,running / done 段用紧凑行。
+    private enum GroupRowStyle {
+        case attention
+        case compact
+    }
+
+    /// 渲染一个 project 组:
+    ///   - 多 session(isCollapsible)→ MCProjectGroupCard(可折叠,展开态列 MCSessionRow)。
+    ///   - 单 session → 退化为原生卡(保持既有 UITest 文案断言不破)。
+    @ViewBuilder
+    private func projectGroupView(_ group: AgentProjectGroup, rowStyle: GroupRowStyle) -> some View {
+        if group.isCollapsible {
+            MCProjectGroupCard(group: group, isExpanded: expandedBinding(for: group.projectName)) { card in
+                NavigationLink {
+                    AgentDetailView(taskID: card.id)
+                } label: {
+                    MCSessionRow(data: card)
+                }
+                .buttonStyle(.plain)
+                .contextMenu { agentContextMenu(for: card.id) }
+            }
+        } else if let card = group.leadCard {
+            NavigationLink {
+                AgentDetailView(taskID: card.id)
+            } label: {
+                switch rowStyle {
+                case .attention: MCAttentionCard(data: card)
+                case .compact: MCRunCompactRow(data: card)
+                }
+            }
+            .buttonStyle(.plain)
+            .contextMenu { agentContextMenu(for: card.id) }
         }
     }
 
@@ -346,12 +387,6 @@ private struct DashboardContent: View {
     }
 
     // MARK: - Helpers
-
-    private var todayLabel: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE · MMdd"
-        return formatter.string(from: .now).uppercased()
-    }
 
     private func cardsLabel(_ n: Int) -> String {
         n < 10 ? "0\(n) cards" : "\(n) cards"
