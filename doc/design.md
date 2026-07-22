@@ -1,560 +1,375 @@
 # BarkAgent — 技术设计
 
-> 版本: 0.3.0 | 日期: 2026-05-08 | 状态: Draft（配合 product.md v0.3.0 重写）
+> 版本: 0.5.0 | 日期: 2026-07-22 | 状态: Draft（glance-first 重构 · 配合 product.md v0.5.0）
+
+## 0. 本次修订（v0.3 文档 → v0.5，对齐真身代码）
+
+v0.3 design 文档描述的是绿地设想，与当前**真实代码库 `BarkMate/`** 已脱节。v0.5 做两件事：**(1) 把文档校正到真身**，**(2) 注入 glance-first 三条工作线**。
+
+### 0.1 文档 vs 真身校正表
+
+| v0.3 文档写的 | 真身代码（`BarkMate/`，git HEAD） | v0.5 处置 |
+|---------------|-----------------------------------|-----------|
+| 最低 iOS 17 | project.yml `deploymentTarget.iOS: 18.0` | 改为 iOS 18 |
+| 模块 `AgentKit` / `ActivityKit-Wrapper` / `LiveActivityExtension` | **均不存在**；LA 仅 `AgentTask.liveActivityID` 字段 + Models 内 ActivityAttributes 空壳 | 删虚构模块；LA target 本地链列 **P0** 待建（远程冷态 P1） |
+| App Group `group.com.barkmate.shared` | 实际 `group.com.barkagent.shared` | 改真值 |
+| 4 Tab 含 Search、Memo（P1） | Search Tab 已删（commit `e55d988`）；Memo 概念下线（`AgentInboxItem` 仅承载旧协议 incoming） | 清账；不回收 |
+| 8 段 Processor 管线（NSE 内联） | 抽为纯函数 `PushPipeline.process()`（decrypt→parse→archive→degrade），NSE 是薄壳 | 按真身描述 |
+| `Item` → 三表迁移 | 已完成，`BarkAgentSchemaV1` = 六实体，无 migration stage | 标为已落地 |
+
+### 0.2 三条工作线（对应 product.md 三句抱怨）
+
+| 线 | 治什么 | 核心动作 | 优先级 |
+|----|--------|----------|--------|
+| **线 A · Glance 新鲜度** | "状态变 UI 不动" | NSE 落库后**立即** `WidgetCenter.reloadTimelines`；主 app 侧 upsert 后同刷 | **P0** |
+| **线 B · IA 瘦身** | "信息太多" | 3 Tab → 2 Tab；History 折入 Agents 的 Settled 段 | **P0** |
+| **线 C · Live Activity** | "离桌感知" 深化 | **本地链（P0）**：新增 LiveActivityExtension target + 主 app 起/更/闭 LA + NSE update 已存在 LA。**远程冷态（P1）**：app 被杀时 server LA push 更新 | **P0（本地）/ P1（远程）** |
+
+> **根因诊断（file:line 级）**：全工程**无任何** `WidgetCenter.reloadTimelines` 调用（`BarkMateWidgets.swift:11` 仅有一句"由主 app 触发"的注释，代码未实现）。NSE 已直接写 SwiftData（数据新鲜），但 glance 表面无人捅，只能靠 Widget 10 分钟轮询或 app 打开追平。这是"不即时"的确切病根，也是线 A 的最小闭环落点。
 
 ## 1. 架构概览
 
-BarkAgent 是基于现代 Apple 框架构建的原生 iOS 应用。架构遵循模块化、本地优先的设计，数据层、业务逻辑和展示层清晰分离。
-
-V0.3 定位重写后，**Agent 状态机**成为数据层一等公民——推送进来后不只是塞进消息表，还要按 `agent_id + task_id` 聚合更新 `AgentTask` 卡片。
+BarkAgent 是基于现代 Apple 框架构建的原生 iOS 应用。V0.5 的重心从「app 内 dashboard」下移到「glance 表面」，数据管道不变，新增"推送到达即刷 glance"的旁路。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        App Targets                              │
-├──────────┬──────────────┬─────────────┬────────────┬───────────┤
-│ BarkAgent │ Notification │   Share     │  Widgets   │ LiveAct.  │
-│ (main)   │ Service Ext  │ Extension   │ (Agent/    │ Extension │
-│          │              │             │  Memo)     │           │
-├──────────┴──────────────┴─────────────┴────────────┴───────────┤
-│                    App Group (shared)                            │
+├──────────────┬──────────────────────┬───────────────┬──────────┤
+│  BarkMate     │ NotificationService  │ BarkMateWidgets│ LiveAct. │
+│  (main app)  │ Extension (NSE)      │  (Widget)     │ Ext (P1) │
+├──────────────┴──────────────────────┴───────────────┴──────────┤
+│              App Group: group.com.barkagent.shared               │
 │  ┌────────────────────────────────────────────────────────┐    │
-│  │              SwiftData ModelContainer                  │    │
-│  │  ┌──────┐ ┌──────────┐ ┌──────────┐ ┌──────┐ ┌──────┐ │    │
-│  │  │Agent │ │AgentStep │ │  Memo    │ │Server│ │Crypto│ │    │
-│  │  │Task  │ │ (history)│ │ (note)   │ │      │ │Config│ │    │
-│  │  └──────┘ └──────────┘ └──────────┘ └──────┘ └──────┘ │    │
+│  │           SwiftData ModelContainer (shared)            │    │
+│  │  AgentTask · AgentStep · AgentInboxItem                │    │
+│  │  Resource · Server · CryptoConfig                      │    │
 │  └────────────────────────────────────────────────────────┘    │
-│  ┌──────────────────┐  ┌─────────────────────────────┐         │
-│  │  UserDefaults     │  │  Keychain (encryption keys) │         │
-│  └──────────────────┘  └─────────────────────────────┘         │
+│  UserDefaults(suite) · Keychain(access group) · PendingQueue    │
 └─────────────────────────────────────────────────────────────────┘
-         │                        │                     │
-         ▼                        ▼                     ▼
-   ┌───────────┐          ┌──────────────┐    ┌──────────────────┐
-   │ APNs      │          │ Bark Server  │    │  Foundation      │
-   │ (Apple)   │          │ (HTTP API)   │    │  Models (on-dev) │
-   └───────────┘          └──────────────┘    └──────────────────┘
+      │ Darwin: itemDidArrive          │ WidgetCenter.reloadTimelines
+      ▼ (刷新主 app Dashboard)          ▼ (刷新 Widget · 线 A 新增)
+   ┌───────────┐   ┌──────────────┐   ┌──────────────────┐
+   │ APNs      │   │ Bark Server  │   │  FoundationModels │
+   │ (Apple)   │   │ (HTTP API)   │   │  (on-device, P1) │
+   └───────────┘   └──────────────┘   └──────────────────┘
 ```
 
-## 2. 技术栈
+## 2. 技术栈（真身）
 
-| 层级 | 技术 | 理由 |
+| 层级 | 技术 | 备注 |
 |------|------|------|
-| UI | SwiftUI | 声明式、现代、Widget / Live Activity 兼容 |
-| 数据 | SwiftData | Apple 原生持久化，V2 iCloud 就绪 |
-| 并发 | Swift Concurrency | async/await、actors、结构化并发 |
-| 网络 | URLSession | 最小依赖，足以应对 Bark API |
-| 加密 | CryptoKit + CryptoSwift | CryptoKit 现代加密，CryptoSwift 用于 Bark AES 兼容 |
-| Markdown | swift-markdown | Apple 的 Markdown 解析器 |
-| Live Activity | ActivityKit | iOS 16.1+；远程更新需 iOS 17+ |
-| 设备端 LLM | FoundationModels framework | iOS 18+（Apple Intelligence 支持机型）|
-| DI | Factory | 轻量 DI 容器（Phase 1 已用） |
-| Keychain | KeychainSwift | 安全密钥存储 |
-| 最低目标 | iOS 17.0 | 覆盖更广用户；iOS 18 特性（FoundationModels、ControlWidget、#Index）按版本自适应 |
+| UI | SwiftUI | 主 app 自管 tab（ZStack + MCTabBar，非系统 TabView） |
+| 数据 | SwiftData | `BarkAgentSchemaV1` 六实体；App Group 共享 store |
+| 并发 | Swift Concurrency | `SWIFT_STRICT_CONCURRENCY: complete`（Swift 6 严格模式） |
+| 网络 | URLSession | `BarkClient` 注册 & push |
+| 加密 | CryptoKit + CryptoSwift | Bark AES 兼容（CBC/ECB/GCM） |
+| Markdown | swift-markdown-ui (`MarkdownUI`) | 详情/正文渲染 |
+| DI | Factory `2.5.0+` | `Container+App` / `Container+Extension` |
+| Widget | WidgetKit | glance 层核心（线 A） |
+| Live Activity | ActivityKit | P1 新增 target |
+| 设备端 LLM | FoundationModels | iOS 18.1+，P1 |
+| 最低目标 | **iOS 18.0** | project.yml deploymentTarget |
 
 ### 依赖管理
 
-使用 **Swift Package Manager (SPM)**。
+XcodeGen（`project.yml`）+ 本地 SPM Packages：
 
 ```
-Dependencies:
-├── Factory (DI 容器)
-├── KeychainSwift (安全存储)
-├── CryptoSwift (Bark AES 兼容)
-├── swift-markdown (Markdown 解析)
-├── MarkdownView (Markdown 渲染)
-└── ZIPFoundation (导出功能, P2)
+Packages（本地）:
+├── Models        # SwiftData 实体 + 枚举 + Schema
+├── BarkService   # 推送管线（decrypt/parse/archive/route）
+├── Store         # 数据访问 + App Group + Keychain + Darwin + 各类 Store
+└── DesignSystem  # MissionControl 设计语言 + MC 组件
+
+远程依赖:
+├── Factory (DI)
+└── MarkdownUI (swift-markdown-ui)
 ```
 
-> **注**：Apple Intelligence 设备端 LLM 通过系统 `FoundationModels` 框架接入，**不需要第三方依赖**，但需 iOS 18.1+ + 支持机型。
-
-## 3. 模块架构
+## 3. 模块架构（真身）
 
 ```
 BarkMate/
-├── App/                          # 主应用 target
-│   ├── BarkAgentApp.swift
-│   ├── Views/
-│   │   ├── AgentDashboard/       # 主屏：Active agents 网格 + history timeline
-│   │   ├── AgentDetail/          # 单 agent task 详情 + step 历史 + LLM 摘要
-│   │   ├── MemoEditor/           # 备忘录编辑（次要功能）
-│   │   ├── Server/               # 服务器管理
-│   │   └── Settings/
-│   └── ViewModels/
+├── App/                              # 主应用 target
+│   ├── Sources/
+│   │   ├── BarkMateApp.swift / AppDelegate.swift
+│   │   ├── PushRegistrar.swift / PushRegistrar / PendingQueueDrainer
+│   │   ├── DI/Container+App.swift
+│   │   └── Views/
+│   │       ├── MainTabView.swift        # 2 Tab（v0.5：删 History tab）
+│   │       ├── AgentDashboardView.swift  # 三桶 triage + project 分组折叠
+│   │       ├── AgentDetailView.swift     # step 历史 + 摘要（P1）
+│   │       ├── HistoryView.swift         # v0.5：内容折入 Dashboard，view 保留供过渡
+│   │       ├── SettingsView.swift / SetupView.swift
+│   │       ├── ServerListView.swift / AddServerView.swift
+│   │       ├── AlertSoundPickerView.swift / StaleTimeoutPickerView.swift
+│   │       └── ContentView.swift
+│   ├── Tests/BarkMateTests/          # 单测（Dashboard mapping / SelectedTab / 等）
+│   └── UITests/BarkMateUITests/      # UI 测试
 │
 ├── Packages/
-│   ├── Models/                   # SwiftData 实体
-│   │   ├── AgentTask.swift       # 持久 agent 卡片（核心新模型）
-│   │   ├── AgentStep.swift       # task 的单次状态推送记录
-│   │   ├── Memo.swift            # 用户备忘录（次要）
-│   │   ├── Server.swift          # Bark 服务器
-│   │   ├── Resource.swift        # 附件
-│   │   └── CryptoConfig.swift    # 加密配置
+│   ├── Models/Sources/Models/
+│   │   ├── AgentTask.swift + AgentTask+Stale.swift   # effectiveStatus 派生 stale
+│   │   ├── AgentStep.swift
+│   │   ├── AgentInboxItem.swift      # 旧协议 incoming（[BARK] 徽章）
+│   │   ├── Resource.swift / Server.swift / CryptoConfig.swift
+│   │   ├── Enums.swift               # AgentStatus / BodyType / ...
+│   │   └── SchemaV1.swift            # BarkAgentSchemaV1 + MigrationPlan（空 stage）
 │   │
-│   ├── BarkService/              # Bark 协议接收
-│   │   ├── BarkClient.swift      # 服务器注册 & API
-│   │   ├── PushProcessor.swift   # 通知处理管线
-│   │   ├── PushParser.swift      # 解析 Bark payload（含 v0.3 新字段）
-│   │   ├── AgentRouter.swift     # 决定 payload 走 agent 路径还是 memo 路径
-│   │   └── Processors/
-│   │       ├── DecryptProcessor.swift
-│   │       ├── ArchiveProcessor.swift     # AgentTask upsert / Memo insert
-│   │       ├── LiveActivityProcessor.swift  # 触发 / 更新 / 闭合
-│   │       ├── LevelProcessor.swift
-│   │       ├── SoundProcessor.swift
-│   │       ├── ImageProcessor.swift
-│   │       └── IconProcessor.swift
+│   ├── BarkService/Sources/BarkService/
+│   │   ├── PushPipeline.swift        # 纯函数 entry：process(userInfo:bundle:container:)
+│   │   ├── PushParser.swift          # ParsedPush（Bark 标准 + v0.3 新字段）
+│   │   ├── DecryptProcessor.swift    # AES 解密 + 降级
+│   │   ├── AgentRouter.swift         # agent vs inbox 路由
+│   │   ├── PushArchiver.swift        # upsert AgentTask + insert AgentStep / archiveInboxItem
+│   │   ├── PendingQueue.swift        # 落库失败降级队列
+│   │   ├── AlertSoundResolver.swift  # per-status 声音决策
+│   │   ├── ImageEnricher.swift       # 图片附件下载
+│   │   ├── DemoPushInjector.swift    # demo 推送注入（Dashboard/Setup 共用）
+│   │   ├── BarkClient.swift + BarkClientProtocol.swift + BarkAPIError.swift
+│   │   ├── CryptoBundle.swift + CryptoSettingsStore.swift
+│   │   ├── DeterministicID.swift + SearchEngine.swift
+│   │   └── BarkService.swift
 │   │
-│   ├── AgentKit/                 # 【新】Agent 状态机领域逻辑
-│   │   ├── AgentTaskStore.swift  # AgentTask CRUD + 聚合逻辑
-│   │   ├── StatusEngine.swift    # 状态转换 + stale 超时检测
-│   │   └── SummaryEngine.swift   # 设备端 LLM 摘要封装（FoundationModels）
-│   │
-│   ├── Store/                    # 通用数据访问层
-│   │   ├── MemoStore.swift
-│   │   ├── ServerStore.swift
-│   │   └── SearchEngine.swift
-│   │
-│   ├── MemoKit/                  # 备忘录编辑器组件（次要）
-│   │   ├── MemoEditor.swift
-│   │   ├── TagParser.swift
+│   ├── Store/Sources/Store/
+│   │   ├── SharedModelContainer.swift  # App Group 内共享容器
+│   │   ├── AppGroup.swift              # "group.com.barkagent.shared"
+│   │   ├── DarwinNotification.swift    # itemDidArrive / pendingTaskQueued
+│   │   ├── KeychainService.swift
+│   │   ├── StaleTimeoutStore.swift     # stale 阈值持久化
+│   │   ├── AlertSoundStore.swift + SoundCatalog.swift
+│   │   ├── DeviceTokenStore.swift + NotificationStatus.swift
 │   │   └── DraftManager.swift
 │   │
-│   ├── ActivityKit-Wrapper/      # 【新】Live Activity 抽象
-│   │   ├── AgentActivity.swift   # ActivityAttributes 定义
-│   │   ├── ActivityCoordinator.swift  # 主 app 侧创建/更新/结束
-│   │   └── ActivityWidget.swift  # WidgetKit ActivityConfiguration
-│   │
-│   └── DesignSystem/             # 共享 UI 组件
-│       ├── AgentCard.swift       # Dashboard 上半屏 agent 卡片
-│       ├── StepRow.swift         # Agent 详情页的 step 行
-│       ├── StatusBadge.swift     # 状态颜色徽章
-│       ├── MemoCard.swift        # 备忘录卡片（history timeline）
-│       ├── TagChip.swift
-│       └── SearchBar.swift
+│   └── DesignSystem/                   # MissionControl 设计语言 + MC* 组件
 │
-├── NotificationServiceExtension/ # 推送处理（含 agent upsert）
-├── ShareExtension/               # 共享内容 → memo
-├── Widgets/                      # 主屏 / 锁屏 Widget（active agents）
-├── LiveActivityExtension/        # 【新】Dynamic Island / 锁屏 Live Activity
-└── AppIntents/                   # Siri Shortcuts
+├── NotificationServiceExtension/       # 薄壳：PushPipeline + 图片 + Darwin（+ 线 A reloadTimelines）
+│   └── Sources/NotificationService.swift + DI/Container+Extension.swift
+│
+├── Widgets/Sources/BarkMateWidgets.swift  # ActiveAgentsWidget（small/medium）
+└── LiveActivityExtension/              # 【P1 · 线 C 新增，当前不存在】
 ```
 
-## 4. 数据模型
+## 4. 数据模型（真身 · BarkAgentSchemaV1）
 
-### 4.1 SwiftData Schema v2
+### 4.1 实体清单
 
-V0.3 重写引入了 schema 升级：**从单一 `Item` 表拆分为 `AgentTask` + `AgentStep` + `Memo` 三表**，对应"agent 状态机"与"用户备忘录"的语义边界。
+`Models/SchemaV1.swift` 定义 `BarkAgentSchemaV1`（版本 1.0.0，无 migration stage，应用未发布无用户数据）：
+
+- **AgentTask** — 持久 agent 卡片（Dashboard 一等公民）
+- **AgentStep** — 单次推送快照（`AgentTask.steps` 反向关系）
+- **AgentInboxItem** — 旧协议 incoming 消息（无 `agent_status`）
+- **Resource** — 附件（关联 step 或 inboxItem）
+- **Server** — Bark 服务器
+- **CryptoConfig** — 加密配置
+
+### 4.2 AgentTask（核心）
+
+真身字段（`Packages/Models/Sources/Models/AgentTask.swift`）：
 
 ```swift
-@Model
-final class AgentTask {
+@Model public final class AgentTask {
+    #Index<AgentTask>(
+        [\.aggregateKey],                 // upsert 主路径
+        [\.isArchived, \.updatedAt],      // Dashboard 主查询
+        [\.statusRaw, \.updatedAt],       // 状态过滤
+        [\.isPinned, \.updatedAt]
+    )
     @Attribute(.unique) var id: UUID
-    /// agent_id + task_id 的复合自然键，用于推送 upsert
-    @Attribute(.unique) var aggregateKey: String   // "${agent_id}::${task_id}"
-    var agentID: String                  // 来自推送 group / agent_id 字段
-    var taskID: String?                  // 来自推送 task_id；nil 表示按 agent 聚合
-    var displayName: String              // 展示用名称（首次推送的 title 或 agent_id）
+    @Attribute(.unique) var aggregateKey: String   // "<agentID>::<taskID-or-_>"
+    var agentID: String
+    var taskID: String?
+    var displayName: String
     var iconURL: String?
-    var status: AgentStatus              // .running / .waitingInput / .blocked / .done / .failed / .stale
-    var latestStepTitle: String?         // 最新 step 的 title（卡片副标题）
-    var progress: String?                // "3/7" 或 "45%" 或 nil
-    var eta: Date?                       // 预计完成时间
-    var isPinned: Bool
-    var isArchived: Bool
-    var isMuted: Bool
-    var sourceServerID: UUID?
-    var liveActivityID: String?          // 关联的 ActivityKit activity id
-    var lastSummary: String?             // 缓存的 LLM 摘要（按需触发后写入）
-    var lastSummaryAt: Date?
-    var createdAt: Date
-    var updatedAt: Date
-
-    @Relationship(deleteRule: .cascade, inverse: \AgentStep.task)
-    var steps: [AgentStep]
-}
-
-@Model
-final class AgentStep {
-    @Attribute(.unique) var id: UUID
-    var task: AgentTask?
-    /// 该 step 推送的状态快照
-    var status: AgentStatus
-    var title: String?
-    var body: String
-    var bodyType: BodyType               // .plainText / .markdown
+    var statusRaw: String                 // AgentStatus.rawValue（存 raw，避枚举迁移坑）
+    var latestStepTitle: String?
     var progress: String?
-    var url: String?
-    var imageURL: String?
-    var rawPayload: Data?                // JSON 编码的原始 Bark payload，调试用
-    var createdAt: Date
-
-    @Relationship(deleteRule: .cascade)
-    var resources: [Resource]
-}
-
-@Model
-final class Memo {
-    @Attribute(.unique) var id: UUID
-    var title: String?
-    var body: String
-    var bodyType: BodyType               // 备忘录通常 .markdown
-    var tags: [String]
-    var isPinned: Bool
-    var isArchived: Bool
-    var createdAt: Date
-    var updatedAt: Date
-
-    @Relationship(deleteRule: .cascade)
-    var resources: [Resource]
-}
-
-@Model
-final class Resource {
-    @Attribute(.unique) var id: UUID
-    var filename: String
-    var mimeType: String
-    var localPath: String
-    var size: Int64
-    var step: AgentStep?
-    var memo: Memo?
-}
-
-@Model
-final class Server {
-    @Attribute(.unique) var id: UUID
-    var name: String?
-    var address: String                  // "https://api.day.app"
-    var key: String                      // 设备注册 key
-    var state: ServerState
-    var lastSyncedAt: Date?
-}
-
-@Model
-final class CryptoConfig {
-    @Attribute(.unique) var id: UUID
-    var serverID: UUID
-    var algorithm: CryptoAlgorithm
-    var mode: CryptoMode
-    var keychainKeyRef: String           // 密钥存 Keychain
-    var keychainIVRef: String?
-    var isEnabled: Bool
-    var createdAt: Date
+    var eta: Date?
+    var isPinned, isArchived, isMuted: Bool
+    var sourceServerID: UUID?
+    var liveActivityID: String?           // 线 C：关联 ActivityKit id
+    var lastSummary: String?              // 线 P1：LLM 摘要缓存
+    var lastSummaryAt: Date?
+    var createdAt, updatedAt: Date
+    @Relationship(deleteRule: .cascade, inverse: \AgentStep.task) var steps: [AgentStep]
 }
 ```
 
-### 4.2 枚举
+- `status` 是 `statusRaw` 的 computed 包装。
+- `aggregateKey(agentID:taskID:)` 静态方法生成聚合键（`taskID` 为 nil 时用 `_` 占位）。
+
+### 4.3 派生 Stale（AgentTask+Stale.swift）
+
+**关键设计**：stale 不落库，是**渲染时按 now 惰性计算**的派生态：
 
 ```swift
-enum AgentStatus: String, Codable {
-    case running                          // agent 推送的 5 种状态 + 客户端推断的 stale
-    case waitingInput  = "waiting_input"
-    case blocked
-    case done
-    case failed
-    case stale                            // 客户端推断：> N 分钟无更新且仍 running
-}
-
-enum BodyType: String, Codable {
-    case plainText
-    case markdown
-}
-
-enum ServerState: String, Codable { case ok, error }
-
-enum CryptoAlgorithm: String, Codable { case aes128, aes192, aes256 }
-enum CryptoMode: String, Codable { case cbc, ecb, gcm }
+func effectiveStatus(now: Date, threshold: TimeInterval) -> AgentStatus
+// running 且 (now - updatedAt) > threshold → .stale；其余原样返回
 ```
 
-### 4.3 索引策略
+- 阈值来自 `StaleTimeoutStore.threshold()`（**默认 15 分钟**，Settings 可调）。真身 `StaleThresholdCatalog.defaultThreshold = .minutes(30)` 且 `options = [off,10,30,60,120]` —— v0.5 落地需插入 `.minutes(15)` 并改默认为 15（见 plan.md G1）。
+- Dashboard / History 渲染各自调 `effective(_:)`，不写回 `statusRaw`——避免多进程写竞争，也保证阈值改动即时生效。
+
+### 4.4 枚举（Enums.swift）
 
 ```swift
-// iOS 18+ 使用 #Index macro
-@available(iOS 18.0, *)
-extension AgentTask {
-    static var indexes: [[PartialKeyPath<AgentTask>]] {
-        [
-            [\.aggregateKey],                    // upsert 主路径
-            [\.isArchived, \.updatedAt],         // Dashboard 主查询（未归档 + 最近更新）
-            [\.status, \.updatedAt],             // 状态过滤
-            [\.isPinned, \.updatedAt],
-        ]
-    }
-}
-
-@available(iOS 18.0, *)
-extension Memo {
-    static var indexes: [[PartialKeyPath<Memo>]] {
-        [
-            [\.createdAt],
-            [\.isArchived, \.createdAt],
-        ]
-    }
-}
-
-// iOS 17 回退：依靠 SQLite 自动创建的 PK/UK 索引
-// `aggregateKey` 的 @Attribute(.unique) 在 iOS 17 也会生成唯一索引
+enum AgentStatus: String { case running, waitingInput = "waiting_input",
+                                blocked, done, failed, stale }
+enum BodyType: String { case plainText, markdown }
 ```
 
-> **注**：`AgentStep` 不建独立索引，通过 `AgentTask` 的关系查询访问；step 数量级远小于历史 Item 总量。
+- `AgentStatus.mcBucket` → `.needsYou` / `.running` / `.settled`（Dashboard/Widget 分桶共用）。
+- `isTerminal`：`done` / `failed`。
 
 ## 5. App Group 共享策略
 
-主应用与 Extensions（NotificationServiceExtension、ShareExtension、Widgets、LiveActivityExtension）通过 App Group 共享数据。
-
-### 5.1 共享边界
+**App Group: `group.com.barkagent.shared`**（`Store/AppGroup.swift`）。主 app / NSE / Widget（/ P1 LiveActivityExtension）共享：
 
 ```
-App Group: group.com.barkmate.shared
-├── SwiftData Store (shared .sqlite)
-│   └── 所有 target 共享同一个 ModelContainer
-├── UserDefaults (suiteName: "group.com.barkmate.shared")
-│   ├── 服务器配置缓存
-│   ├── 通知偏好设置
-│   ├── Widget 刷新标记
-│   └── Stale 超时阈值（默认 30 分钟）
-└── Shared File Container
-    ├── pending_messages/    # NSE 写入，主应用消费
-    ├── images/              # 推送图片
-    └── resources/           # 备忘录附件
+group.com.barkagent.shared
+├── SwiftData store（SharedModelContainer.make() 统一配置）
+├── UserDefaults(suite)：stale 阈值 / 通知偏好 / 声音偏好 / device token
+├── Keychain（access group）：AES key / IV
+└── PendingQueue（NSE 落库失败降级；主 app PendingQueueDrainer 消费）
 ```
 
-### 5.2 进程间协调
+### 5.1 进程间协调
 
-| 机制 | 用途 |
-|------|------|
-| Darwin Notification | NSE 写入新 AgentStep 后通知主应用刷新 Dashboard |
-| UserDefaults KVO | Widget 监听 active agent 计数变化 |
-| File Coordination | 主 app 和 NSE 同时写附件文件时的协调 |
-| ActivityKit push token | NSE 拿到 push token 写共享存储，主 app 同步到服务器 |
+| 机制 | 事件 | 用途 |
+|------|------|------|
+| Darwin Notification | `itemDidArrive` | NSE 落库后通知主 app 刷新 Dashboard（`DashboardContent` 靠 `refreshToken` 重建） |
+| Darwin Notification | `pendingTaskQueued` | 落库失败入队，提示主 app drain |
+| **WidgetCenter（线 A 新增）** | `reloadTimelines(ofKind:)` | NSE / 主 app 落库后刷新 Widget timeline |
+| ActivityKit push token（线 C） | — | 主 app 拿 LA push token 上报 server |
 
-### 5.3 SwiftData 多进程访问
+## 6. NotificationServiceExtension 设计（真身 + 线 A）
 
-复用 Phase 1 已验证方案：相同 `ModelContainer` 配置 + WAL 模式 + 短事务 + Darwin Notification。
+### 6.1 现状：薄壳 + 纯函数管线
 
-## 6. NotificationServiceExtension 设计
-
-V0.3 NSE 的核心变化：**根据 payload 是否包含 `agent_status` 字段决定路由——走 Agent 路径或走 Memo/Message 路径**。
-
-### 6.1 资源限制（不变）
-
-| 限制 | 值 | 应对策略 |
-|------|-----|----------|
-| 内存 | ~24MB（实际 50MB 会被 kill） | 轻量写入，不持有大对象 |
-| 执行时间 | ~30 秒 | 各阶段超时降级 |
-| 无 UI | 不能弹界面 | 静默完成 |
-
-### 6.2 处理管线
+`NotificationService.didReceive` 只做 Notification 框架交互，schema 决策全在 `PushPipeline.process()`：
 
 ```
-APNs Payload
-    │
-    ▼
-┌────────────────────────────────┐
-│ 1. 解密 (DecryptStage)         │  CryptoSwift AES
-├────────────────────────────────┤
-│ 2. 解析 (ParseStage)           │  提取 Bark 标准字段 + v0.3 新字段
-├────────────────────────────────┤
-│ 3. 路由 (AgentRouter)          │  ① 有 agent_status → Agent 路径
-│                                │  ② 无 agent_status → Message 路径（落 history）
-├────────────────────────────────┤
-│ 4a. Agent Upsert (ArchiveStage)│  按 aggregateKey upsert AgentTask + insert AgentStep
-│ 4b. Message Archive            │  作为只读 step 落入 default agent 或 memo-like
-├────────────────────────────────┤
-│ 5. Live Activity (LAStage)     │  根据状态转换决定创建 / 更新 / 闭合
-├────────────────────────────────┤
-│ 6. 通知 (NotifyStage)          │  Darwin Notification → 主应用
-├────────────────────────────────┤
-│ 7. 富化 (EnrichStage)          │  图片下载、sound、level
-├────────────────────────────────┤
-│ 8. 呈现 (PresentStage)         │  返回 UNNotificationContent 给系统
-└────────────────────────────────┘
+didReceive → SharedModelContainer.make() → resolve CryptoBundle
+           → PushPipeline.process(userInfo:bundle:container:) → Outcome
+           → applyDecrypted（明文 alert 同步回 banner）
+           → applyAlertSound（per-status 声音覆写）
+           → ImageEnricher.attachImageIfNeeded
+           → switch Outcome: .archived/.pending → DarwinNotification.post(.itemDidArrive)
+                             .dropped → 仅 log
+           → contentHandler(content)
 ```
 
-### 6.3 Agent Upsert 关键逻辑
+`PushPipeline.process()` 内部：
+
+```
+decrypt = DecryptProcessor.decryptIfNeeded(userInfo, bundle)
+parsed  = PushParser.parse(decrypt.userInfo)
+if container:  PushArchiver.archive(parsed, degradation: decrypt)
+               → .archived(routeKind: agentStatus != nil ? .agent : .inbox)
+else / 失败:   PendingQueue.enqueue → .pending / .dropped
+```
+
+`PushArchiver.archive`（`aggregateKey` fetch-then-decide upsert，符合 SwiftData `@Attribute(.unique)` 是 upsert 而非 reject 的语义）：
+- **agent 路径**：fetch AgentTask by aggregateKey → 存在则更新字段 / 不存在则 insert；再按 step.id 去重 insert AgentStep（C1 修复：同 id 不重复插）。
+- **inbox 路径**：fetch AgentInboxItem by id → upsert。
+
+### 6.2 线 A：Glance 新鲜度（P0 · 本次核心改动点）
+
+**问题**：`PushPipeline` / NSE 落库后，从不调 `WidgetCenter.reloadTimelines`。Widget 只能 10 分钟轮询。
+
+**方案**：在 `.archived` / `.pending` 分支，**Darwin post 之后追加一次 Widget 刷新**：
 
 ```swift
-// 伪代码 — AgentTaskStore.upsert()
-func upsert(payload: ParsedPayload, serverID: UUID) throws -> AgentTask {
-    let agentID = payload.agentID ?? payload.group ?? "default"
-    let taskID  = payload.taskID                       // 可能为 nil
-    let key     = "\(agentID)::\(taskID ?? "_")"
-
-    let existing = try context.fetch(
-        FetchDescriptor<AgentTask>(predicate: #Predicate { $0.aggregateKey == key })
-    ).first
-
-    let task = existing ?? AgentTask(id: UUID(), aggregateKey: key, ...)
-    task.status            = payload.agentStatus
-    task.latestStepTitle   = payload.title
-    task.progress          = payload.progress
-    task.eta               = payload.eta
-    task.updatedAt         = Date()
-
-    let step = AgentStep(
-        id: UUID(), task: task,
-        status: payload.agentStatus,
-        title: payload.title, body: payload.body,
-        progress: payload.progress, ...
-    )
-    context.insert(step)
-    try context.save()
-    return task
-}
+// NSE processPipeline() switch outcome:
+case .archived, .pending:
+    DarwinNotification.post(.itemDidArrive)
+    WidgetCenter.shared.reloadTimelines(ofKind: "ActiveAgentsWidget")  // 线 A 新增
 ```
 
-### 6.4 Live Activity 触发规则（NSE 内）
+设计约束与取舍：
+- **放 NSE 里而非只放主 app**：NSE 是"app 未打开也会跑"的唯一入口，这是"离桌即时"的关键。主 app 侧 upsert（demo push / drain）也补一次同样调用。
+- **成本可控**：`reloadTimelines` 是轻量信号，不在 NSE 24MB/30s 预算的风险区（真正耗资源的是解密/图片下载，已在前）。
+- **kind 常量化**：抽 `WidgetHistoryConstants.widgetKind` 式常量，NSE 与 Widget 共用，避免字符串漂移。
+- **降级**：`reloadTimelines` 失败不阻断 `contentHandler`（glance 刷新是尽力而为，不影响通知呈现）。
 
-| 入站状态 | LiveActivity 现状 | 动作 |
-|----------|-------------------|------|
-| running + eta 已知 | 不存在 | **创建** Live Activity，写 `liveActivityID` 到 AgentTask |
-| running | 存在 | **更新** content state |
-| waiting_input / blocked | 任意 | **更新** 至高亮状态（不关闭，仍在跑） |
-| done / failed | 存在 | **结束** Live Activity（`dismissalPolicy: .immediate`），清空 ID |
-| done / failed | 不存在 | 仅触发普通通知，不开 LA |
+### 6.3 资源限制（不变）
 
-> **iOS 16.1 / 17 兼容**：LA 在 iOS 16.1 支持本地启动；远程 push 更新需 iOS 17.2+。NSE 无法直接启动 LA（需要主 app 在前台或后台运行才能 `Activity.request`），所以**远程启动必须依赖 server 端推送 `live-activity` push type**（S 阶段会扩展）。
+| 限制 | 值 | 应对 |
+|------|-----|------|
+| 内存 | ~24MB | 轻量写入；解密/图片阶段控量 |
+| 执行时间 | ~30s | `serviceExtensionTimeWillExpire` 兜底交付 |
+| 无 UI | — | 静默完成 |
 
-### 6.5 降级（不变）
+### 6.4 降级矩阵
 
 | 失败点 | 降级 |
 |--------|------|
-| 解密失败 | 存原始密文，标记 `encrypted` |
-| 图片下载 | 存 URL，主 app 重试 |
-| AgentTask 写入失败 | 进 pending queue，主 app 重放 |
-| 不含 `agent_status` 的旧 Bark 推送 | 走 Message 路径，落入 history（不影响存量用户） |
+| 解密失败 | 存原始密文，标记 encrypted（DecryptProcessor 内） |
+| 容器不可用 / 落库失败 | PendingQueue.enqueue → `.pending`；主 app drain 重放 |
+| 入队也失败 | `.dropped`，仅 log，不崩 |
+| Widget 刷新失败（线 A） | 忽略，不阻断通知 |
+| 无 `agent_status` 旧推送 | 走 inbox 路径落 AgentInboxItem |
 
 ## 7. 数据流
 
-### 7.1 Agent 推送流
+### 7.1 Agent 推送流（含线 A glance 刷新）
 
 ```
-Agent / Hook → curl → Bark Server → APNs → iOS → NotificationServiceExtension
-                                                  │
-                                                  ├─ AgentRouter 判断路径
-                                                  │
-                                                  ├─→ AgentTaskStore.upsert()  (SwiftData)
-                                                  │
-                                                  ├─→ ActivityCoordinator (Live Activity)
-                                                  │
-                                                  ├─→ Darwin Notification → 主 app
-                                                  │
-                                                  └─→ System Notification
-主 app 收到 Darwin Notification:
-    │
-    ├─→ Dashboard @Query 自动刷新（updatedAt DESC + isArchived == false）
-    ├─→ Widget timeline 刷新
-    └─→ pending queue 消费（图片重试等）
+Agent/Hook → curl → Bark Server → APNs → NSE
+   NSE:
+   ├─ PushPipeline.process → PushArchiver.upsert（SwiftData）
+   ├─ WidgetCenter.reloadTimelines           ← 线 A：glance 即时刷
+   ├─ DarwinNotification.post(.itemDidArrive)  → 主 app（前台时刷 Dashboard）
+   └─ contentHandler（系统 banner）
+   主 app 收到 Darwin:
+   └─ AgentDashboardView.refreshToken &+= 1 → DashboardContent 重建 → @Query 拉最新
 ```
 
-### 7.2 LLM 摘要流（按需触发）
+### 7.2 LLM 摘要流（P1，按需触发）
 
 ```
-用户点击 AgentCard → 进入 AgentDetail
-    │
-    └─→ 用户点击 "总结进度" 按钮（不自动触发）
-          │
-          ▼
-        SummaryEngine.summarize(task:)
-          ├─ 检查 lastSummary + lastSummaryAt（≤ 5 分钟则复用缓存）
-          ├─ 检查 FoundationModels availability
-          │   ├─ available → on-device LLM 推理
-          │   └─ unavailable → 返回 .noModel（UI 改显示原始 step 列表）
-          ├─ 组装 prompt：task.steps.title + body（最近 20 条）
-          ├─ 调用 LanguageModelSession.respond(to:)
-          └─ 结果写回 task.lastSummary / lastSummaryAt
+AgentDetailView → 用户点 "总结进度"
+   → 检查 lastSummary/lastSummaryAt（≤5min 复用缓存）
+   → SystemLanguageModel.availability
+       available → LanguageModelSession.respond(prompt: 最近 N step title+body)
+       unavailable → 隐藏按钮，纯 step 列表
+   → 结果写回 task.lastSummary / lastSummaryAt
 ```
 
-**Prompt 模板**（V1）：
-```
-你是 agent 任务进度摘要助手。基于以下 step 历史，用 ≤3 句中文概括：
-1) agent 现在在做什么；2) 进度如何；3) 是否有阻塞。
-
-Steps:
-[1] [10:23] running — 拉取依赖
-[2] [10:25] running — 编译 src/...
-...
-```
-
-**Privacy**：FoundationModels 完全 on-device，prompt 和 response 不出设备。Apple Intelligence 不可用时返回 `.noModel`，UI 降级为纯 step 列表。
-
-### 7.3 备忘录流（不变）
-
-```
-用户 → MemoEditor → TagParser → DraftManager
-                              → 保存
-                                  ├─→ SwiftData (Memo)
-                                  ├─→ Resource 文件写入
-                                  └─→ Widget 刷新
-```
-
-### 7.4 搜索流
-
-```
-SearchEngine.search(query, scope)
-    │
-    ├─ scope == .all
-    │   ├─→ AgentTask predicate (displayName / latestStepTitle CONTAINS)
-    │   ├─→ AgentStep predicate (title / body CONTAINS)
-    │   └─→ Memo predicate (title / body / tags CONTAINS)
-    │
-    └─ 按 updatedAt DESC 合并去重
-```
+Prompt 构造时 strip server URL / key / auth header（安全，§12.3）。
 
 ## 8. Agent 状态机引擎
 
 ### 8.1 状态来源
 
-客户端**完全信任 agent 推送的 `agent_status` 字段**，不强制状态机合法性（不校验 `done → running` 这类非法转换）。Agent 是事实来源。
+客户端**完全信任 agent 推送的 `agent_status`**，不校验转换合法性。Agent 是事实来源。
 
-### 8.2 Stale 超时
+### 8.2 Stale 派生（真身：不落库）
 
-```swift
-// StatusEngine.swift
-actor StatusEngine {
-    /// 主 app 启动 / Dashboard 出现 / 定时（5 分钟）触发
-    func reconcileStale() async {
-        let threshold = UserDefaults.shared.staleThresholdMinutes  // 默认 30
-        let now = Date()
-        let cutoff = now.addingTimeInterval(-TimeInterval(threshold * 60))
+见 §4.3。相对 v0.3 文档的 `StatusEngine.reconcileStale()`（定时写库覆盖）方案，真身改为 **`effectiveStatus(now:threshold:)` 惰性派生**——更简单、无写竞争、阈值改动即时生效。
 
-        let stuck = try? context.fetch(
-            FetchDescriptor<AgentTask>(predicate: #Predicate {
-                $0.status == .running && $0.updatedAt < cutoff
-            })
-        )
-        stuck?.forEach { $0.status = .stale }
-        try? context.save()
-    }
-}
-```
+驱动时机：Dashboard / History 每次渲染按当前 `Date()` + `StaleTimeoutStore.threshold()` 计算。
 
-驱动时机：
-- 主 app 启动时一次
-- Dashboard 出现时一次
-- 后台 `BGAppRefreshTask` 注册周期任务（系统决定何时跑）
-- 用户下拉刷新时一次
+### 8.3 状态 → 桶 → 色映射
 
-不在 NSE 里跑——NSE 资源紧张，且 stale 不需要实时。
+| 状态 | 桶（mcBucket） | 语义 |
+|------|----------------|------|
+| waiting_input / blocked | needsYou | 需你插手（顶部大卡 + 优先 Live Activity） |
+| running | running | 在跑 |
+| done / failed / stale | settled | 已了结（含派生 stale） |
 
-### 8.3 状态颜色映射
+配色走 DesignSystem 的 MissionControl 色板（amber/cyan/lime 等 HUD 色）。
 
-| 状态 | 颜色 | 设计 token |
-|------|------|-----------|
-| running | 蓝 | `Color.accentBlue` |
-| waiting_input | 黄 | `Color.warningYellow` |
-| blocked | 橙 | `Color.alertOrange` |
-| done | 绿 | `Color.successGreen` |
-| failed | 红 | `Color.errorRed` |
-| stale | 灰 | `Color.mutedGray` |
+## 9. Live Activity 设计（线 C · 本地链 P0 / 远程冷态 P1）
 
-## 9. Live Activity 设计
+> **现状**：`LiveActivityExtension` target **不存在**；只有 `AgentTask.liveActivityID` 字段预留 + Models 内 ActivityAttributes 空壳。
+> **拆分**：**本地链 P0**（§9.1-9.2：target + 主 app 起/更/闭 + NSE update 已存在 LA，app 运行时即可用）；**远程冷态 P1**（§9.3：app 被杀时 server LA push，依赖 BarkMateServer）。
 
 ### 9.1 ActivityAttributes
 
 ```swift
 struct AgentActivityAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
+    struct ContentState: Codable, Hashable {
         var status: AgentStatus
         var stepTitle: String
         var progress: String?
@@ -567,166 +382,120 @@ struct AgentActivityAttributes: ActivityAttributes {
 }
 ```
 
-### 9.2 启动 / 更新 / 结束
+### 9.2 生命周期与约束
 
-| 操作 | 在哪里发生 | 备注 |
-|------|-----------|------|
-| 启动 | 主 app（前台或后台）/ 通过远程推送 `liveactivity` push type | NSE 自身不能 `Activity.request`，需要主 app 协助或 server 发 LA push |
-| 更新 | NSE（每次推送进来） + 主 app（reconcile） | 通过 `Activity<...>.update(...)` |
-| 结束 | NSE（终态推送）/ 主 app（用户归档） | `Activity.end(dismissalPolicy: .immediate)` |
+| 操作 | 触发者 | 约束 | 优先级 |
+|------|--------|------|--------|
+| 启动 | 主 app（前/后台） | **NSE 无法 `Activity.request`**——本地首启靠主 app | **P0** |
+| 更新 | NSE（每次推送）+ 主 app | `Activity.update(...)`（NSE 只更新已存在 LA） | **P0** |
+| 结束 | NSE（终态）/ 主 app（用户归档） | `Activity.end(dismissalPolicy: .immediate)` | **P0** |
+| 远程冷态更新 | server `liveactivity` push | app 被杀时唯一通道，依赖 Server | P1 |
 
-### 9.3 远程更新 push token 流程
+启动规则（方案 X，来自旧 Bark 实现经验）：
+- `waiting_input` / `blocked` 的 (agentID+taskID) → 起一个 LA（最需注意的状态）
+- 转 `running` / `done` / `failed` / `stale` / 用户归档 → end 对应 LA
+- 同时活跃 LA 上限 cap（默认 4），超过 LRU 驱逐
+- 仅 iOS 16.2+ 生效（Dynamic Island）；本 app 最低 iOS 18，无兼容负担
+- **本地链边界**：app 完全被系统杀掉时，主 app 与 NSE 都无法更新 LA（NSE 只能 update 不能 request，且被杀后 LA 已冻结）→ 冷态更新必须走 §9.3 远程 push（P1）
+
+### 9.3 远程更新 push token 流程（依赖 Server 端 · P1）
 
 ```
-1. 主 app 启动 Activity → activity.pushTokenUpdates 异步流
-2. 收到 token → 写 App Group UserDefaults + 上报 Bark server
-3. Server 推送时若 task 有活跃 LA token → 同时发 LA push（push-type: liveactivity）
-4. iOS 收到 LA push → 直接更新 Activity，不经过 NSE
+1. 主 app 启动 Activity → activity.pushTokenUpdates 流
+2. 收到 token → 写 App Group + 上报 Bark server
+3. Server 推送时若 task 有活跃 LA token → 同发 LA push（push-type: liveactivity）
+4. iOS 直接更新 Activity，不经 NSE
 ```
 
-## 10. 设备端 LLM 摘要
+> **跨端依赖**：仅"远程冷态更新"（app 被杀）需 BarkMateServer 支持 LA push 端点，列 P1。**本地链（§9.1-9.2，app 运行时的起/更/闭）不依赖 Server，列 P0**。
+
+## 10. 设备端 LLM 摘要（P1）
 
 ### 10.1 FoundationModels 集成
 
 ```swift
-import FoundationModels
-
 @available(iOS 18.1, *)
 struct SummaryEngine {
     func summarize(task: AgentTask) async throws -> String {
         let model = SystemLanguageModel.default
-        guard model.availability == .available else {
-            throw SummaryError.unavailable
-        }
+        guard model.availability == .available else { throw SummaryError.unavailable }
         let session = LanguageModelSession(model: model)
-        let prompt = buildPrompt(task: task)
-        let response = try await session.respond(to: prompt)
-        return response.content
+        return try await session.respond(to: buildPrompt(task: task)).content
     }
 }
 ```
 
-### 10.2 触发与缓存策略
+### 10.2 触发与缓存
 
-- **非自动触发**：用户进入 AgentDetail 后**手动点 "总结进度"** 才调用。理由：on-device 推理仍有功耗成本，避免后台滥用。
-- **缓存**：`lastSummary` + `lastSummaryAt` 写回 AgentTask；若 task 在缓存有效期内（默认 5 分钟）无新 step，直接复用缓存。
-- **可用性检查**：通过 `SystemLanguageModel.availability` 判断。不可用时（iOS 17、不支持机型、用户关闭 Apple Intelligence）UI 直接展示原始 step 列表，不显示"总结"按钮。
+- **非自动**：AgentDetail 内手动点 "总结进度" 才调用（省功耗）。
+- **缓存**：`lastSummary` + `lastSummaryAt` 写回 AgentTask；缓存有效期（默认 5min）内无新 step 复用。
+- **可用性**：`SystemLanguageModel.availability` 不可用（iOS 版本/机型/用户关闭）→ 隐藏按钮，纯 step 列表。
 
-### 10.3 安全与隐私
+### 10.3 隐私
 
-- Prompt 和 response 全部 on-device。
-- 不向 prompt 中拼接 server URL、key、Bearer token 等敏感字段（解析时显式 strip）。
-- 输出渲染走与 Markdown 相同的沙箱（禁止 HTML）。
+Prompt/response 全 on-device；构造时 strip server URL/key/auth；输出走 Markdown 沙箱（禁 HTML）。
 
-## 11. 搜索引擎
+## 11. 搜索（真身：无独立 Tab）
 
-### 11.1 搜索范围
-
-V0.3 搜索拆分为 3 个数据源：
-
-```swift
-struct SearchScope: OptionSet {
-    let rawValue: Int
-    static let agents = SearchScope(rawValue: 1 << 0)  // AgentTask
-    static let steps  = SearchScope(rawValue: 1 << 1)  // AgentStep
-    static let memos  = SearchScope(rawValue: 1 << 2)  // Memo
-    static let all: SearchScope = [.agents, .steps, .memos]
-}
-```
-
-### 11.2 实现
-
-每个 scope 一个独立 `FetchDescriptor`，使用 `localizedStandardContains`。结果用 `SearchResult` 统一包装后按 `updatedAt` DESC 合并。
-
-> 性能预期与 v0.2 一致：< 10k 条目下 < 200ms。超过 50k 走 V2 FTS5 升级路径。
+Search Tab 已在 v0.4 删除。`BarkService/SearchEngine.swift` 仍在，作为**未来 Agents 内联搜索**的能力底座（不是独立入口）。v0.5 不新增 Search UI；若后续需要，挂在 Agents 顶部搜索框（product.md §7.2）。
 
 ## 12. 安全设计
 
-### 12.1 威胁模型（更新）
+### 12.1 威胁模型（沿用）
 
-| 威胁 | 风险 | V1 缓解 | V2 缓解 |
-|------|------|---------|---------|
-| 设备丢失，数据被提取 | 中 | iOS Data Protection (AFU) | SQLCipher + 生物识别 |
-| Bark 推送内容中间人窃听 | 低（APNs TLS） | Bark E2E AES | — |
-| 加密密钥泄露 | 中 | Keychain（硬件保护） | Secure Enclave 绑定 |
-| LLM 摘要泄漏敏感字段 | **新** | strip server URL/key/auth header；on-device 推理；不上传 | — |
-| 恶意 Bark server 注入伪造 agent_status | 中 | UI 信任 status 但展示来源 server；用户可静音/封禁 | server 签名 |
-| Extension 内存 dump | 低 | 密钥用完释放 | — |
+| 威胁 | V1 缓解 |
+|------|---------|
+| 设备丢失数据被提取 | iOS Data Protection（AFU） |
+| 推送中间人 | APNs TLS + Bark E2E AES |
+| 密钥泄露 | Keychain（access group，硬件保护） |
+| LLM 摘要泄敏 | strip URL/key/auth；on-device |
+| 恶意 server 伪造 status | UI 信任但展示来源 server；可静音 |
 
-### 12.2 加密密钥管理（不变）
+> 上架必备之外（Encryption 区块 / SQLCipher / 生物识别锁）**不做**（历史决策）。
+
+### 12.2 密钥管理
 
 ```
-Keychain (kSecAttrAccessibleAfterFirstUnlock)
-├── AES Key   → "barkmate.crypto.{serverID}.key"
-├── AES IV    → "barkmate.crypto.{serverID}.iv"
-└── access group → "{teamID}.com.barkmate.shared"
+Keychain（access group "{teamID}.com.barkagent.shared"）
+├── AES Key / IV（KeychainService.Configuration.shared(teamID:)）
 ```
 
 ### 12.3 输入安全
 
-- Markdown 渲染禁用 HTML 标签
-- URL scheme 白名单：`http` / `https` / `tel` / `mailto`
-- 图片下载仅 `https`，最大 10MB
-- LLM prompt 构造时 strip 已知敏感字段
+- Markdown 禁 HTML；URL scheme 白名单 http/https/tel/mailto
+- 图片仅 https，限大小
+- LLM prompt strip 已知敏感字段
 
-## 13. 错误处理策略
-
-### 13.1 分层（基本沿用）
+## 13. 错误处理
 
 | 层级 | 策略 |
 |------|------|
-| Extension | 静默降级 |
-| 数据层 | 重试 + pending queue |
-| 网络层 | 指数退避 |
-| LLM 层 | **新** — 可用性失败 → fallback 原始列表；推理失败 → 不缓存、UI 显示 "总结暂不可用" |
-| UI 层 | 用户可见错误状态 |
+| NSE | 静默降级；PendingQueue 兜底；Widget 刷新失败忽略 |
+| 数据层 | fetch-then-decide upsert；save 失败入 pending |
+| 网络层 | 指数退避（BarkClient） |
+| LLM 层（P1） | 不可用 fallback 列表；推理失败不缓存 + UI 提示 |
+| UI 层 | 空态 / setup 引导 / 错误状态可见 |
 
-### 13.2 Pending Queue（扩展任务类型）
-
+PendingQueue 任务类型（真身以 `PendingQueue` 落 parsed push 为主；线 C 后扩 LA 启停）：
 ```swift
-enum PendingTaskType: String, Codable {
-    case archiveStep
-    case downloadImage
-    case retryDecrypt
-    case startLiveActivity     // NSE 无法直接启动 LA，落入队列由主 app 启动
-    case endLiveActivity
-}
+// 现状：enqueue(ParsedPush)
+// 线 C 扩展预留：startLiveActivity / endLiveActivity（NSE 无法直启，交主 app）
 ```
 
-## 14. Schema 迁移策略
+## 14. Schema 迁移
 
-### 14.1 V1 → V2 迁移
+`BarkAgentSchemaV1` = 六实体，`BarkAgentMigrationPlan.stages = []`（未发布无数据）。V2 扩展时新增 `SchemaV2` + migration stage。各模型预留 `metadata: Data?` 支持 lightweight migration。
 
-V0.3 重写涉及 schema 升级（Item → AgentTask + AgentStep + Memo）。Phase 1 已经创建了 `BarkAgentSchemaV1` 但内容是旧的 Item 设计，**需要先把 Phase 1 的 V1 schema 调整为本文档定义的形态**——因为 Phase 1 还没产生用户数据，可以直接覆盖而非迁移。
+## 15. 设计差异对比（v0.3 文档 → v0.5 真身）
 
-如果未来要支持从已发布版本的旧 schema 升级：
-
-```swift
-enum BarkAgentSchemaV1: VersionedSchema {
-    static var models: [any PersistentModel.Type] = [
-        AgentTask.self, AgentStep.self, Memo.self,
-        Resource.self, Server.self, CryptoConfig.self
-    ]
-    static var versionIdentifier = Schema.Version(1, 0, 0)
-}
-```
-
-### 14.2 迁移原则（不变）
-
-- `metadata: Data?` 字段在各模型预留以支持 V2 扩展
-- 优先 lightweight migration
-- Extension 和主 app 必须使用相同 MigrationPlan
-- 发版前必测迁移
-
-## 15. 设计差异对比（v0.2 → v0.3）
-
-| 维度 | v0.2 | v0.3 |
-|------|------|------|
-| 核心数据实体 | 单 `Item`（type 区分 push/memo） | `AgentTask` + `AgentStep` + `Memo` 三表 |
-| 主屏 UI | 统一 timeline | 上半屏 Dashboard + 下半屏 history |
-| 推送处理 | 解密 → 解析 → 归档 | 解密 → 解析 → **路由** → upsert / archive |
-| Live Activity | 无 | 完整集成（NSE 触发 + remote push） |
-| 设备端 LLM | 无 | FoundationModels 按需总结 |
-| 备忘录优先级 | P0 | P1（次要功能） |
-| 搜索范围 | 单一 Item | 三表联合搜索 |
-| Schema | Item 中心 | 状态机中心 |
+| 维度 | v0.3 文档设想 | v0.5 真身 + 本次 |
+|------|---------------|------------------|
+| 最低系统 | iOS 17 | iOS 18 |
+| Tab | 4（含 Search） | **2（Agents + Settings）** |
+| Memo | P1 手写备忘 | 删除；`AgentInboxItem` 仅旧协议 incoming |
+| NSE 结构 | 8 段内联 Processor | 纯函数 `PushPipeline` + 薄壳 NSE |
+| Stale | `StatusEngine` 定时写库 | `effectiveStatus` 惰性派生（不写库） |
+| Glance 新鲜度 | 未定义 | **线 A：NSE 落库即 reloadTimelines** |
+| 模块 | AgentKit/LA-Wrapper/LA-Ext | 均无；LA-Ext 列 P1 |
+| Live Activity | "完整集成" | 空壳；**本地链 P0 + 远程冷态 P1**（后者依赖 Server LA push） |
+| 虚构模块 | 有 | 已清除，对齐真实 Packages 布局 |
