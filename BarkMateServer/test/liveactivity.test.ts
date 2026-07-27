@@ -1,5 +1,5 @@
-import { SELF } from 'cloudflare:test';
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { SELF, env } from 'cloudflare:test';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { buildLiveActivityPayload, liveActivityTopic } from '../src/apns/liveactivity';
 
 const APNS_PRODUCTION_HOST = 'https://api.push.apple.com';
@@ -143,5 +143,63 @@ describe('POST /liveactivity/:token', () => {
     const body = (await response.json()) as { code: number; message: string };
     expect(body.code).toBe(400);
     expect(body.message).toBe('BadDeviceToken');
+  });
+});
+
+describe('POST /liveactivity/register', () => {
+  const DEVICE_KEY = 'reg-device-key';
+  const DEVICE_TOKEN = 'aabbcc00';
+  const AGG_KEY = 'demo-agent::task-1';
+  const LA_TOKEN = 'la-push-token-xyz';
+
+  beforeEach(async () => {
+    const list = await env.DEVICES.list();
+    for (const k of list.keys) await env.DEVICES.delete(k.name);
+    await env.DEVICES.put(DEVICE_KEY, DEVICE_TOKEN);
+  });
+
+  it('stores the LA push token under la:<device_key>:<aggregate_key>', async () => {
+    const response = await SELF.fetch('http://localhost/liveactivity/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ device_key: DEVICE_KEY, aggregate_key: AGG_KEY, token: LA_TOKEN }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await env.DEVICES.get(`la:${DEVICE_KEY}:${AGG_KEY}`)).toBe(LA_TOKEN);
+  });
+
+  it('deletes the LA token on the "deleted" sentinel', async () => {
+    await env.DEVICES.put(`la:${DEVICE_KEY}:${AGG_KEY}`, LA_TOKEN);
+
+    const response = await SELF.fetch('http://localhost/liveactivity/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ device_key: DEVICE_KEY, aggregate_key: AGG_KEY, token: 'deleted' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await env.DEVICES.get(`la:${DEVICE_KEY}:${AGG_KEY}`)).toBeNull();
+  });
+
+  it('400 when device_key is not registered', async () => {
+    const response = await SELF.fetch('http://localhost/liveactivity/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ device_key: 'unknown-key', aggregate_key: AGG_KEY, token: LA_TOKEN }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await env.DEVICES.get(`la:unknown-key:${AGG_KEY}`)).toBeNull();
+  });
+
+  it('400 when required fields are missing', async () => {
+    const response = await SELF.fetch('http://localhost/liveactivity/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ device_key: DEVICE_KEY, token: LA_TOKEN }),
+    });
+
+    expect(response.status).toBe(400);
   });
 });

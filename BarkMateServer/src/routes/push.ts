@@ -11,6 +11,7 @@ import { failed, ok } from '../types';
 import { DeviceStorage } from '../storage/kv';
 import { getApnsJwt } from '../apns/jwt';
 import { buildPayload } from '../apns/payload';
+import { buildLiveActivityPayload, liveActivityTopic } from '../apns/liveactivity';
 import { pushToApns, isInvalidToken } from '../apns/client';
 
 type PushContext = Context<{ Bindings: Bindings }>;
@@ -155,6 +156,10 @@ async function pushSingle(env: Bindings, raw: Record<string, unknown>): Promise<
     await storage.deleteDevice(deviceKey);
   }
 
+  // Best-effort Live Activity fan-out：仅当推送带 agent 状态、且该任务已登记 LA
+  // push token 时，追发一条 ActivityKit 远程更新。失败不影响 alert 推送的返回码。
+  await fanOutLiveActivity(env, storage, jwt, deviceKey, raw);
+
   if (apnsResult.status === 200) {
     return { code: 200, device_key: deviceKey };
   }
@@ -163,4 +168,84 @@ async function pushSingle(env: Bindings, raw: Record<string, unknown>): Promise<
     message: apnsResult.reason ?? `apns status ${apnsResult.status}`,
     device_key: deviceKey,
   };
+}
+
+// MARK: - Live Activity fan-out
+
+/// done/failed 视为终态 → LA `end`；其余状态 → `update`。
+const LA_END_STATUSES = new Set(['done', 'failed']);
+const LA_KNOWN_STATUSES = new Set([
+  'running',
+  'waiting_input',
+  'blocked',
+  'done',
+  'failed',
+  'stale',
+]);
+
+/// 与 iOS `AgentTask.aggregateKey(agentID:taskID:)` 一致：`<agent_id>::<task_id-or-_>`。
+function aggregateKeyFrom(raw: Record<string, unknown>): string | null {
+  const agentID = pickRawString(raw, 'agent_id');
+  if (!agentID) return null;
+  const taskID = pickRawString(raw, 'task_id') || '_';
+  return `${agentID}::${taskID}`;
+}
+
+async function fanOutLiveActivity(
+  env: Bindings,
+  storage: DeviceStorage,
+  jwt: string,
+  deviceKey: string,
+  raw: Record<string, unknown>,
+): Promise<void> {
+  const status = pickRawString(raw, 'agent_status');
+  if (!status || !LA_KNOWN_STATUSES.has(status)) return;
+
+  const aggregateKey = aggregateKeyFrom(raw);
+  if (!aggregateKey) return;
+
+  const activityToken = await storage.getLiveActivityToken(deviceKey, aggregateKey);
+  if (!activityToken) return;
+
+  // content-state 与 iOS AgentActivityAttributes.ContentState 对齐（纯字符串）。
+  const contentState: Record<string, unknown> = { status };
+  const stepTitle = pickRawString(raw, 'body') ?? pickRawString(raw, 'title');
+  contentState.stepTitle = stepTitle ?? '';
+  const progress = pickRawString(raw, 'progress');
+  if (progress) contentState.progress = progress;
+
+  const isEnd = LA_END_STATUSES.has(status);
+  const built = buildLiveActivityPayload({
+    event: isEnd ? 'end' : 'update',
+    content_state: contentState,
+    // 终态推送优先级 10（立即送达并结束），进行中 5（省电节流）。
+    priority: isEnd ? 10 : 5,
+    collapse_id: aggregateKey,
+  });
+  if ('error' in built) return;
+
+  try {
+    const result = await pushToApns({
+      jwt,
+      topic: liveActivityTopic(env.APNS_TOPIC),
+      env: env.APNS_ENV,
+      deviceToken: activityToken,
+      payload: built.payload,
+      pushType: 'liveactivity',
+      priority: built.priority,
+      ...(built.collapseId ? { collapseId: built.collapseId } : {}),
+    });
+    // LA token 失效，或本条已 end → 清理登记，避免后续悬空 fan-out。
+    if (isInvalidToken(result) || isEnd) {
+      await storage.deleteLiveActivityToken(deviceKey, aggregateKey);
+    }
+  } catch {
+    // best-effort：吞掉 fan-out 异常，绝不影响 alert 推送结果。
+  }
+}
+
+function pickRawString(raw: Record<string, unknown>, key: string): string | undefined {
+  const value = raw[key];
+  if (typeof value !== 'string') return undefined;
+  return value.length > 0 ? value : undefined;
 }

@@ -136,6 +136,130 @@ describe('POST /push (V2 JSON)', () => {
   });
 });
 
+describe('Live Activity fan-out', () => {
+  const AGG_KEY = 'demo-agent::task-1';
+  const LA_TOKEN = 'la-push-token-001';
+  const LA_KV_KEY = `la:${TEST_DEVICE_KEY}:${AGG_KEY}`;
+
+  interface CapturedRequest {
+    url: string;
+    headers: Headers;
+    body: string;
+  }
+
+  /// 按 APNs device-token 分流 alert / liveactivity 两条请求。
+  function spyApnsByToken(): CapturedRequest[] {
+    const captured: CapturedRequest[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      captured.push({
+        url: typeof input === 'string' ? input : (input as Request).url,
+        headers: new Headers(init?.headers ?? {}),
+        body: String(init?.body ?? ''),
+      });
+      return mockApnsResponse(200);
+    });
+    return captured;
+  }
+
+  it('fans out an ActivityKit update when agent_status + LA token present', async () => {
+    await env.DEVICES.put(LA_KV_KEY, LA_TOKEN);
+    const captured = spyApnsByToken();
+
+    const response = await SELF.fetch('http://localhost/push', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        device_key: TEST_DEVICE_KEY,
+        agent_id: 'demo-agent',
+        task_id: 'task-1',
+        agent_status: 'waiting_input',
+        progress: '3/8',
+        body: 'Confirm overwrite',
+      }),
+    });
+    expect(response.status).toBe(200);
+
+    const laReq = captured.find((r) => r.url.endsWith(`/3/device/${LA_TOKEN}`));
+    expect(laReq).toBeDefined();
+    expect(laReq?.headers.get('apns-push-type')).toBe('liveactivity');
+    expect(laReq?.headers.get('apns-topic')).toBe('com.barkagent.ios.push-type.liveactivity');
+    expect(laReq?.headers.get('apns-priority')).toBe('5');
+    expect(laReq?.headers.get('apns-collapse-id')).toBe(AGG_KEY);
+
+    const aps = (JSON.parse(laReq?.body ?? '{}') as { aps: Record<string, unknown> }).aps;
+    expect(aps.event).toBe('update');
+    expect(aps['content-state']).toEqual({
+      status: 'waiting_input',
+      stepTitle: 'Confirm overwrite',
+      progress: '3/8',
+    });
+
+    // LA token 保留（update 不清理）。
+    expect(await env.DEVICES.get(LA_KV_KEY)).toBe(LA_TOKEN);
+  });
+
+  it('sends event:end and clears the LA token on a terminal status', async () => {
+    await env.DEVICES.put(LA_KV_KEY, LA_TOKEN);
+    const captured = spyApnsByToken();
+
+    const response = await SELF.fetch('http://localhost/push', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        device_key: TEST_DEVICE_KEY,
+        agent_id: 'demo-agent',
+        task_id: 'task-1',
+        agent_status: 'done',
+        body: 'Turn complete',
+      }),
+    });
+    expect(response.status).toBe(200);
+
+    const laReq = captured.find((r) => r.url.endsWith(`/3/device/${LA_TOKEN}`));
+    const aps = (JSON.parse(laReq?.body ?? '{}') as { aps: Record<string, unknown> }).aps;
+    expect(aps.event).toBe('end');
+    expect(laReq?.headers.get('apns-priority')).toBe('10');
+
+    // 终态 → 清理登记。
+    expect(await env.DEVICES.get(LA_KV_KEY)).toBeNull();
+  });
+
+  it('does not fan out when no LA token is registered', async () => {
+    const captured = spyApnsByToken();
+
+    const response = await SELF.fetch('http://localhost/push', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        device_key: TEST_DEVICE_KEY,
+        agent_id: 'demo-agent',
+        task_id: 'task-1',
+        agent_status: 'running',
+        body: 'working',
+      }),
+    });
+    expect(response.status).toBe(200);
+
+    // 只有 alert 一条，无 liveactivity fan-out。
+    expect(captured.some((r) => r.headers.get('apns-push-type') === 'liveactivity')).toBe(false);
+  });
+
+  it('does not fan out when agent_status is absent', async () => {
+    await env.DEVICES.put(LA_KV_KEY, LA_TOKEN);
+    const captured = spyApnsByToken();
+
+    const response = await SELF.fetch('http://localhost/push', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ device_key: TEST_DEVICE_KEY, body: 'plain alert' }),
+    });
+    expect(response.status).toBe(200);
+
+    expect(captured.some((r) => r.headers.get('apns-push-type') === 'liveactivity')).toBe(false);
+    expect(await env.DEVICES.get(LA_KV_KEY)).toBe(LA_TOKEN);
+  });
+});
+
 describe('JWT cache cleanup', () => {
   it('survives consecutive pushes (cache-or-resign)', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => mockApnsResponse(200));

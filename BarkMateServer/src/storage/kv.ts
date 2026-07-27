@@ -1,10 +1,15 @@
 /**
  * KV 封装：device_key -> device_token 映射。
  * 与 bark-server `database.Database` 接口对应。
+ *
+ * Live Activity push token 复用同一 KV，以 `la:<device_key>:<aggregate_key>`
+ * 前缀存储，避免与 device_key 命名空间碰撞（device_key 是 22 字符 base64url，
+ * 永不含 `:`；la 键必含两个 `:`）。
  */
 
 const DEVICE_KEY_BYTES = 16;
 const DEVICE_TOKEN_MAX_LEN = 160;
+const LA_TOKEN_PREFIX = 'la:';
 
 export class DeviceStorage {
   constructor(private readonly kv: KVNamespace) {}
@@ -28,6 +33,33 @@ export class DeviceStorage {
     if (!deviceKey) return;
     await this.kv.delete(deviceKey);
   }
+
+  /// 读取某设备某任务的 Live Activity push token。不存在返回 null。
+  async getLiveActivityToken(deviceKey: string, aggregateKey: string): Promise<string | null> {
+    if (!deviceKey || !aggregateKey) return null;
+    return this.kv.get(liveActivityTokenKey(deviceKey, aggregateKey));
+  }
+
+  /// 写入某设备某任务的 Live Activity push token。
+  async saveLiveActivityToken(
+    deviceKey: string,
+    aggregateKey: string,
+    token: string,
+  ): Promise<void> {
+    if (!deviceKey || !aggregateKey) return;
+    await this.kv.put(liveActivityTokenKey(deviceKey, aggregateKey), token);
+  }
+
+  /// 删除某设备某任务的 Live Activity push token（LA 结束时上报 `deleted`）。
+  async deleteLiveActivityToken(deviceKey: string, aggregateKey: string): Promise<void> {
+    if (!deviceKey || !aggregateKey) return;
+    await this.kv.delete(liveActivityTokenKey(deviceKey, aggregateKey));
+  }
+}
+
+/// LA token 的 KV 键：`la:<device_key>:<aggregate_key>`。
+function liveActivityTokenKey(deviceKey: string, aggregateKey: string): string {
+  return `${LA_TOKEN_PREFIX}${deviceKey}:${aggregateKey}`;
 }
 
 /// 校验 device_token 格式合法（非空 + 不超长）。

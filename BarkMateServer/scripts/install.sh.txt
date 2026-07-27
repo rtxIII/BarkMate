@@ -11,7 +11,7 @@
 #      CLI that every hook calls. Self-built agents stop here.
 #   2. Auto-detects ~/.claude, ~/.codex, ~/.opencode and wires the *real*
 #      hook surface each tool exposes:
-#        Claude Code → Notification + Stop  (stdin JSON via jq)
+#        Claude Code → Notification + Stop + StopFailure  (stdin JSON via jq)
 #        Codex CLI   → notify in config.toml + PermissionRequest in hooks.json
 #        OpenCode    → TS plugin in .opencode/plugins + opencode.json register
 #   3. Skips silently if a target tool is not installed. Re-running is safe.
@@ -94,7 +94,7 @@ cat > "${BARK_PUSH}" <<BARKPUSH
 #      bark-push --from codex-notify '{"type":"agent-turn-complete",...}'
 #
 # Status mapping the adapters use:
-#   Claude  Notification → waiting_input ; Stop → done
+#   Claude  Notification → waiting_input ; Stop → done ; StopFailure → failed
 #   Codex   SessionStart→running ; PermissionRequest→waiting_input ; Stop→done
 #   Codex notify (agent-turn-complete) → done
 #   OpenCode (handled by TS plugin, calls bark-push with direct flags)
@@ -190,6 +190,13 @@ if [ -n "\${FROM}" ]; then
         Stop|stop)
           STATUS="\${STATUS:-done}"
           [ -z "\${BODY}" ]  && BODY="Turn complete"
+          [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
+          ;;
+        StopFailure|stop_failure)
+          # Turn ended due to an API error (rate_limit / overloaded / server_error / …).
+          # Event identity IS the signal — no stdin field needed to know it failed.
+          STATUS="\${STATUS:-failed}"
+          [ -z "\${BODY}" ]  && BODY="API error — turn ended"
           [ -z "\${TITLE}" ] && TITLE="\${LABEL}"
           ;;
         *)
@@ -326,7 +333,7 @@ toml_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
 }
 
-# ── Claude Code: ~/.claude/settings.json (Notification + Stop only) ──────────
+# ── Claude Code: ~/.claude/settings.json (Notification + Stop + StopFailure) ──
 install_claude() {
   CLAUDE_DIR="${HOME}/.claude"
   CLAUDE_CFG="${CLAUDE_DIR}/settings.json"
@@ -351,10 +358,11 @@ install_claude() {
       | map(select((.command // "") | contains("bark-push --from claude") | not));
     .hooks = (.hooks // {}) |
     .hooks.Notification = (((.hooks.Notification // []) | map(.hooks = not_barkmate) | map(select((.hooks // []) | length > 0))) + [barkmate_hook]) |
-    .hooks.Stop         = (((.hooks.Stop // [])         | map(.hooks = not_barkmate) | map(select((.hooks // []) | length > 0))) + [barkmate_hook])
+    .hooks.Stop         = (((.hooks.Stop // [])         | map(.hooks = not_barkmate) | map(select((.hooks // []) | length > 0))) + [barkmate_hook]) |
+    .hooks.StopFailure  = (((.hooks.StopFailure // [])  | map(.hooks = not_barkmate) | map(select((.hooks // []) | length > 0))) + [barkmate_hook])
   ' "${CLAUDE_CFG}" > "${TMP}"; then
     mv "${TMP}" "${CLAUDE_CFG}"
-    ok "claude · Notification + Stop wired (reads stdin JSON)"
+    ok "claude · Notification + Stop + StopFailure wired (reads stdin JSON)"
   else
     rm -f "${TMP}"
     warn "claude · ${CLAUDE_CFG} is not valid JSON — left unchanged (fix it, then re-run)"
