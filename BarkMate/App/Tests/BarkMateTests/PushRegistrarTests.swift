@@ -180,4 +180,11 @@ private final class MockBarkClient: BarkClientProtocol, @unchecked Sendable {
     func ping(serverURL: URL) async throws -> Bool {
         true
     }
+
+    func registerLiveActivity(
+        token: String,
+        aggregateKey: String,
+        serverURL: URL,
+        deviceKey: String
+    ) async throws {}
 }

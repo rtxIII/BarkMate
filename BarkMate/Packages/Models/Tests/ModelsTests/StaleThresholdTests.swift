@@ -18,11 +18,16 @@ final class StaleThresholdTests: XCTestCase {
     func testCatalogOptions() {
         XCTAssertEqual(
             StaleThresholdCatalog.options,
-            [.off, .minutes(10), .minutes(30), .minutes(60), .minutes(120)]
+            [.off, .minutes(10), .minutes(15), .minutes(30), .minutes(60), .minutes(120)]
         )
     }
 
     func testCatalogDefault() {
-        XCTAssertEqual(StaleThresholdCatalog.defaultThreshold, .minutes(30))
+        XCTAssertEqual(StaleThresholdCatalog.defaultThreshold, .minutes(15))
+    }
+
+    /// 默认值必须是 picker 可选档位,否则 Settings 里会成为选不出的孤值。
+    func testCatalogDefaultIsSelectable() {
+        XCTAssertTrue(StaleThresholdCatalog.options.contains(StaleThresholdCatalog.defaultThreshold))
     }
 }

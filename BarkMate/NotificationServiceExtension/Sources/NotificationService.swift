@@ -6,7 +6,7 @@
 //    1. 通过 PushPipeline 跑 decrypt → parse → archive(失败降级 PendingQueue)
 //    2. 把解密后的 alert 同步回 bestAttemptContent(让系统 banner 可读)
 //    3. ImageEnricher 下载 image URL 作为 attachment
-//    4. DarwinNotification.post 通知主 App 刷新
+//    4. DarwinNotification.post 通知主 App 刷新;WidgetCenter.reloadTimelines 刷 glance(线 A)
 //    5. 任何阶段失败都不阻断 contentHandler
 //
 
@@ -68,6 +68,9 @@ final class NotificationService: UNNotificationServiceExtension {
         switch outcome {
         case .archived, .pending:
             DarwinNotification.post(.itemDidArrive)
+            // 线 A:落库即刷 glance。NSE 是"app 未开也会跑"的唯一入口,
+            // 这是"离桌即时"的关键。请求非保证(系统按预算合并),失败也不阻断通知。
+            GlanceRefresh.reload()
         case .dropped(_, _, let error):
             Self.log.error("push dropped (archive + pending both failed): \(error.localizedDescription, privacy: .public)")
         }

@@ -160,11 +160,10 @@ final class BarkMateRemoteNotificationTests: XCTestCase {
         app = XCUIApplication()
         app.launch()
 
-        let historyTab = app.buttons["tab-history"]
-        XCTAssertTrue(historyTab.waitForExistence(timeout: 5), app.debugDescription)
-        historyTab.tap()
-        XCTAssertTrue(app.buttons["history-filter-incoming"].waitForExistence(timeout: 5), app.debugDescription)
-        app.buttons["history-filter-incoming"].tap()
+        // G2:旧协议 [BARK] 现折入 Agents 的 Settled ARCHIVE 折叠子段(展开可达)。
+        let disclosure = app.buttons["dashboard-archive-disclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5), app.debugDescription)
+        disclosure.tap()
 
         XCTAssertTrue(app.staticTexts[legacyTitle].waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(app.staticTexts["Legacy Bark notification archived through real APNs."].exists)
@@ -185,11 +184,10 @@ final class BarkMateRemoteNotificationTests: XCTestCase {
         app = XCUIApplication()
         app.launch()
 
-        let historyTab = app.buttons["tab-history"]
-        XCTAssertTrue(historyTab.waitForExistence(timeout: 5), app.debugDescription)
-        historyTab.tap()
-        XCTAssertTrue(app.buttons["history-filter-incoming"].waitForExistence(timeout: 5), app.debugDescription)
-        app.buttons["history-filter-incoming"].tap()
+        // G2:解密失败的加密推送降级为 [BARK] incoming,折入 Settled ARCHIVE 折叠子段。
+        let disclosure = app.buttons["dashboard-archive-disclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5), app.debugDescription)
+        disclosure.tap()
 
         let decryptionFailures = app.staticTexts.matching(
             NSPredicate(format: "label == %@", decryptionFailureBody)

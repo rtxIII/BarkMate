@@ -25,6 +25,10 @@ struct AgentDashboardView: View {
     /// 展开的 project 组名集合。托管在此(而非 DashboardContent),因为后者随
     /// `.id(refreshToken)` 在每次推送到达时被整体重建,内部 @State 会被丢弃。
     @State private var expandedProjects: Set<String> = []
+    /// Settled 折叠子段(归档 / stale / [BARK])的展开态。同样 hoist 到此,原因同上。
+    @State private var isSettledArchiveExpanded: Bool = false
+    /// HEADS-UP 三格页面过滤器的选中桶。nil = 不过滤(全显)。hoist 到此,原因同上。
+    @State private var selectedBucket: MissionControl.Status.Bucket?
 
     @Injected(\.pendingQueueDrainer) private var pendingQueueDrainer: PendingQueueDrainer
     @Injected(\.sharedModelContainer) private var modelContainer: ModelContainer
@@ -33,6 +37,8 @@ struct AgentDashboardView: View {
     var body: some View {
         DashboardContent(
             expandedProjects: $expandedProjects,
+            isSettledArchiveExpanded: $isSettledArchiveExpanded,
+            selectedBucket: $selectedBucket,
             onRefresh: { await pendingQueueDrainer.drain() },
             onDemoPush: sendDemoPush,
             onGoToSetup: { selectedTab.requestSetupGuide() }
@@ -58,6 +64,7 @@ struct AgentDashboardView: View {
     private func sendDemoPush() {
         DemoPushInjector.injectNextStep(into: modelContainer)
         DarwinNotification.post(.itemDidArrive)
+        GlanceRefresh.reload()   // 线 A:落库后同刷 glance,与推送路径一致
     }
 }
 
@@ -68,6 +75,11 @@ private struct DashboardContent: View {
     @Environment(\.modelContext) private var modelContext
 
     @Injected(\.staleTimeoutStore) private var staleTimeoutStore: StaleTimeoutStore
+    @Injected(\.onboardingPrefsStore) private var onboardingPrefsStore: OnboardingPrefsStore
+
+    /// 空态 hero 卡的「不再提示」态。store 读值非 @Published,onAppear 读初值,
+    /// 点 ✕ 后本地翻转并落盘,保证当次会话即时隐藏。
+    @State private var heroDismissed: Bool = false
 
     @Query(sort: \AgentTask.updatedAt, order: .reverse)
     private var tasks: [AgentTask]
@@ -80,6 +92,8 @@ private struct DashboardContent: View {
     private var inboxItems: [AgentInboxItem]
 
     @Binding var expandedProjects: Set<String>
+    @Binding var isSettledArchiveExpanded: Bool
+    @Binding var selectedBucket: MissionControl.Status.Bucket?
     let onRefresh: @Sendable () async -> Void
     let onDemoPush: () -> Void
     let onGoToSetup: () -> Void
@@ -163,15 +177,31 @@ private struct DashboardContent: View {
         )
     }
 
-    private var historyPreview: [HistoryItemData] {
-        let terminalTasks = tasks
-            .filter { effective($0).isTerminal || $0.isArchived }
+    /// Settled 折叠子段的行数据:归档 task(任意状态)+ 非归档 stale(派生)+ 旧协议 [BARK] inbox。
+    /// 与上方 done/failed 卡组无重叠(那些是非归档 done/failed)。复用 History 的映射,
+    /// 去 History Tab 后这些条目仍在 Agents 内可达。
+    private var settledFoldRows: [HistoryItemData] {
+        let taskRows = tasks
+            .filter { $0.isArchived || effective($0) == .stale }
             .map { HistoryItemData.fromTask($0, status: effective($0)) }
         let inboxRows = inboxItems.map(HistoryItemData.fromInboxItem)
-        return (terminalTasks + inboxRows)
-            .sorted { $0.updatedAt > $1.updatedAt }
-            .prefix(3)
-            .map { $0 }
+        return (taskRows + inboxRows).sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// 清除早于 cutoff 的折叠段条目。`offsetSeconds == nil` = 全清(cutoff = distantFuture)。
+    /// 迁自 HistoryView:只删折叠段收纳的 task/inbox,保留 pinned 与活跃(非 terminal/stale/归档)任务。
+    private func clear(olderThan offsetSeconds: TimeInterval?) {
+        let cutoff = offsetSeconds.map { Date(timeIntervalSinceNow: $0) } ?? .distantFuture
+        for task in tasks {
+            let inFold = task.isArchived || effective(task).isTerminal || effective(task) == .stale
+            if inFold && !task.isPinned && task.updatedAt < cutoff {
+                modelContext.delete(task)
+            }
+        }
+        for item in inboxItems where !item.isPinned && item.createdAt < cutoff {
+            modelContext.delete(item)
+        }
+        try? modelContext.save()
     }
 
     private var isEmpty: Bool {
@@ -182,23 +212,22 @@ private struct DashboardContent: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
-                    MCHeadsUpPanel(counts: counts)
+                    MCHeadsUpPanel(counts: counts, selectedBucket: isEmpty ? nil : $selectedBucket)
                         .padding(.bottom, 6)
 
-                    if isEmpty {
-                        emptyState
-                        emptyStateTips
+                    if isEmpty && settledFoldRows.isEmpty {
+                        if heroDismissed {
+                            minimalEmptyPlaceholder
+                        } else {
+                            emptyState
+                            emptyStateTips
+                        }
                     } else {
                         bucketSections
                     }
 
-                    if !historyPreview.isEmpty {
-                        MCSectionHeader("History", trailing: "incoming pushes")
-                        VStack(spacing: 0) {
-                            ForEach(historyPreview) { item in
-                                HistoryMiniRow(data: item, style: .missionControl)
-                            }
-                        }
+                    if !settledFoldRows.isEmpty && shouldShow(.settled) {
+                        settledArchiveDisclosure
                     }
                 }
                 .padding(.horizontal, 16)
@@ -206,13 +235,19 @@ private struct DashboardContent: View {
             }
         }
         .refreshable { await onRefresh() }
+        .onAppear { heroDismissed = onboardingPrefsStore.isEmptyStateHeroDismissed() }
     }
 
     // MARK: - Bucket sections
 
+    /// 页面过滤器:未选中(nil)时全显;选中某桶时只显该桶对应段。
+    private func shouldShow(_ bucket: MissionControl.Status.Bucket) -> Bool {
+        selectedBucket == nil || selectedBucket == bucket
+    }
+
     @ViewBuilder
     private var bucketSections: some View {
-        if !needsYouGroups.isEmpty {
+        if shouldShow(.needsYou) && !needsYouGroups.isEmpty {
             MCSectionHeader("Needs you", trailing: cardsLabel(needsYouTasks.count))
             VStack(spacing: 10) {
                 ForEach(needsYouGroups) { group in
@@ -221,7 +256,7 @@ private struct DashboardContent: View {
             }
         }
 
-        if !runningGroups.isEmpty {
+        if shouldShow(.running) && !runningGroups.isEmpty {
             MCSectionHeader("Running", trailing: agentsLabel(runningTasks.count))
             VStack(spacing: 10) {
                 ForEach(runningGroups) { group in
@@ -230,7 +265,7 @@ private struct DashboardContent: View {
             }
         }
 
-        if !settledDoneGroups.isEmpty || !settledFailedGroups.isEmpty {
+        if shouldShow(.settled) && (!settledDoneGroups.isEmpty || !settledFailedGroups.isEmpty) {
             MCSectionHeader("Settled", trailing: settledTrailingLabel)
             VStack(spacing: 10) {
                 ForEach(settledDoneGroups) { group in
@@ -253,6 +288,63 @@ private struct DashboardContent: View {
     private enum GroupRowStyle {
         case attention
         case compact
+    }
+
+    // MARK: - Settled 折叠子段(吸收 History)
+
+    /// Settled 段底部的折叠子段:归档 / 派生 stale / 旧协议 [BARK],默认收起。
+    /// 段头挂「清除历史」菜单(迁自 HistoryView 的 clear(olderThan:))。
+    @ViewBuilder
+    private var settledArchiveDisclosure: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Button {
+                    isSettledArchiveExpanded.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(isSettledArchiveExpanded ? "▾" : "▸")
+                            .foregroundStyle(MissionControl.Color.amber)
+                        Text("ARCHIVE")
+                            .foregroundStyle(MissionControl.Color.ink)
+                        Text(itemsLabel(settledFoldRows.count).uppercased())
+                            .foregroundStyle(MissionControl.Color.inkSoft)
+                    }
+                    .font(MissionControl.Font.captionMono)
+                    .tracking(1.8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("dashboard-archive-disclosure")
+
+                Spacer(minLength: 8)
+
+                Menu {
+                    Button("Older than 24 hours") { clear(olderThan: -60 * 60 * 24) }
+                    Button("Older than 7 days") { clear(olderThan: -60 * 60 * 24 * 7) }
+                    Button("Older than 30 days") { clear(olderThan: -60 * 60 * 24 * 30) }
+                    Button("Clear all", role: .destructive) { clear(olderThan: nil) }
+                } label: {
+                    Text("⌫")
+                        .font(MissionControl.Font.captionMono)
+                        .foregroundStyle(MissionControl.Color.inkSoft)
+                }
+                .accessibilityIdentifier("dashboard-archive-clear")
+            }
+            .padding(.top, MissionControl.Spacing.sectionGap)
+            .padding(.bottom, MissionControl.Spacing.sectionAfterHeader)
+
+            if isSettledArchiveExpanded {
+                VStack(spacing: 0) {
+                    ForEach(settledFoldRows) { item in
+                        HistoryMiniRow(data: item, style: .missionControl)
+                    }
+                }
+            }
+        }
+    }
+
+    private func itemsLabel(_ n: Int) -> String {
+        n < 10 ? "0\(n) items" : "\(n) items"
     }
 
     /// 渲染一个 project 组:
@@ -318,7 +410,36 @@ private struct DashboardContent: View {
             Rectangle()
                 .stroke(MissionControl.Color.rule, lineWidth: MissionControl.Border.hairline)
         )
+        .overlay(alignment: .topTrailing) {
+            Button(action: dismissHero) {
+                Text("✕")
+                    .font(MissionControl.Font.jetBrainsMono(size: 13, weight: .bold))
+                    .foregroundStyle(MissionControl.Color.inkSoft)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+            .accessibilityIdentifier("dashboard-dismiss-hero")
+        }
         .padding(.vertical, 14)
+    }
+
+    /// hero 被「不再提示」后,空态区只留一行极简占位(Q1=A)。
+    private var minimalEmptyPlaceholder: some View {
+        Text("— NO AGENTS —")
+            .font(MissionControl.Font.jetBrainsMono(size: 10, weight: .bold))
+            .tracking(1.8)
+            .foregroundStyle(MissionControl.Color.inkSoft)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 32)
+    }
+
+    private func dismissHero() {
+        onboardingPrefsStore.dismissEmptyStateHero()
+        withAnimation(.easeOut(duration: 0.2)) {
+            heroDismissed = true
+        }
     }
 
     private var emptyStateActions: some View {

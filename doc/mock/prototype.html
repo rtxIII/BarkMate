@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;0,800;1,400&family=Inter+Tight:wght@200;700;800;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <style>
-:root{
-  /* ===== 真身 MissionControl 色板 (Theme.swift / MissionControl+Color.swift) ===== */
+/* ===== 深色主题 · MissionControl HUD（真身 MissionControl+Color.swift）===== */
+:root,[data-theme="dark"]{
   --void:#0A0D0C; --hull:#131816; --hullUp:#1A201D; --abyss:#050706;
   --rule:#2A302D; --ruleHot:#3A423E;
   --ink:#E8EBD8; --inkSoft:#98A092; --inkMute:#717771;
@@ -18,9 +18,29 @@
   --lime:#C4F154;   /* done */
   --orange:#FF6B35; /* blocked */
   --magenta:#FF4D8D;/* failed */
+  /* 纹理 / 辉光开关 */
+  --grid-dot:rgba(152,160,146,.05);
+  --scan:rgba(0,0,0,.14); --scan-op:.5;
+  --glow:1;                 /* 1=辉光生效（暗底） */
+  --bezel:#050706;          /* 设备边框（硬件，两主题都黑）*/
   --mono:'JetBrains Mono',ui-monospace,monospace;
   --disp:'Inter Tight',sans-serif;
   --serif:'Instrument Serif',serif;
+}
+/* ===== 亮色主题 · Blueprint（真身 BarkTheme.Palette 暖纸色系血统）===== */
+[data-theme="light"]{
+  --void:#F4E9D4; --hull:#FFFDF8; --hullUp:#EDE0CB; --abyss:#0B0E0D;
+  --rule:#E0D3BC; --ruleHot:#CBB595;
+  --ink:#1B2129; --inkSoft:#5C685F; --inkMute:#A0937E;
+  --amber:#B77410;  /* waiting — 深赭 */
+  --cyan:#0E7C8B;   /* running — 深青（infoCyan 系）*/
+  --lime:#5E8C18;   /* done — 橄榄绿（successGreen 系）*/
+  --orange:#CE531A; /* blocked — alertOrange */
+  --magenta:#BE2A66;/* failed — errorRed 系 */
+  --grid-dot:rgba(39,56,67,.07);
+  --scan:transparent; --scan-op:0;
+  --glow:0;                 /* 0=亮底无辉光，改用饱和度/实心点表活跃 */
+  --bezel:#111417;          /* 亮色下设备边框仍深（硬件）*/
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{-webkit-font-smoothing:antialiased}
@@ -32,18 +52,65 @@ body{
   padding:44px 28px 96px;
   position:relative;
   overflow-x:hidden;
+  transition:background .4s ease,color .4s ease;
 }
-/* 点阵网格 + 扫描线纹理 */
+/* 点阵网格（两主题共用变量）*/
 body::before{
   content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background-image:radial-gradient(rgba(152,160,146,.05) 1px,transparent 1px);
+  background-image:radial-gradient(var(--grid-dot) 1px,transparent 1px);
   background-size:22px 22px;
 }
+/* 扫描线（仅深色可见）*/
 body::after{
   content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(0,0,0,.14) 3px 4px);
-  mix-blend-mode:multiply;opacity:.5;
+  background:repeating-linear-gradient(0deg,transparent 0 3px,var(--scan) 3px 4px);
+  mix-blend-mode:multiply;opacity:var(--scan-op);
 }
+
+/* ===== 亮色主题结构性覆盖：辉光失效 → 改饱和度语言 ===== */
+[data-theme="light"] .badge.wait,[data-theme="light"] .badge.run,[data-theme="light"] .badge.done,
+[data-theme="light"] .di-r,[data-theme="light"] .bigcard .code,[data-theme="light"] .heads .n,
+[data-theme="light"] .srow .rs,[data-theme="light"] .srow .rp,[data-theme="light"] .flat .frs,
+[data-theme="light"] .flat .frp,[data-theme="light"] .b-done,[data-theme="light"] .b-fail,
+[data-theme="light"] .b-bark,[data-theme="light"] .sbadge,[data-theme="light"] .stale-hl,
+[data-theme="light"] .lockwid .n,[data-theme="light"] .tele-core .big u{
+  text-shadow:none !important;
+}
+/* 发光的 marker / 进度条 / 指示点 → 亮色下改为实心无光晕 */
+[data-theme="light"] .la::before{box-shadow:none}
+[data-theme="light"] .progbar i{box-shadow:none}
+[data-theme="light"] .di.a .pulse,[data-theme="light"] .di.c .pulse,[data-theme="light"] .di.l .pulse,
+[data-theme="light"] .live-dot{box-shadow:none}
+[data-theme="light"] .phone.d1::after{background:none}   /* 亮色无环境光晕 */
+/* Live Activity 卡在亮色下用白面板 + 边框（无 hull 深底）*/
+[data-theme="light"] .la{background:var(--hull);border-color:var(--rule)}
+/* 徽章底色在亮色下加深一点以保对比 */
+[data-theme="light"] .badge.wait{background:rgba(183,116,16,.12);border-color:rgba(183,116,16,.4)}
+[data-theme="light"] .badge.run{background:rgba(14,124,139,.12);border-color:rgba(14,124,139,.4)}
+[data-theme="light"] .badge.done{background:rgba(94,140,24,.14);border-color:rgba(94,140,24,.4)}
+/* 遥测台：深色=辉光雷达 → 亮色=蓝图工程制图（蓝墨线）*/
+[data-theme="light"] .telemetry::after{
+  border-color:rgba(14,124,139,.28);
+  background:
+    radial-gradient(circle,rgba(14,124,139,.14) 0 1px,transparent 1px) 50% 50%/100% 100% no-repeat,
+    conic-gradient(from 0deg,rgba(14,124,139,.16),transparent 18%,transparent 100%);
+}
+[data-theme="light"] .tele-core .big u{color:var(--cyan)}
+/* tab bar 在亮色下用暖纸面板（原深色 rgba 不适配）*/
+[data-theme="light"] .tabbar{background:linear-gradient(180deg,rgba(255,253,248,.6),var(--hull))}
+/* toggle knob 亮色下用纸底（青轨道上压浅色圆点）*/
+[data-theme="light"] .tgl::after{background:var(--hull)}
+/* 遥测四角刻度线在亮色下用蓝墨 */
+[data-theme="light"] .tele-ticks{background:repeating-linear-gradient(0deg,transparent 0 18px,rgba(39,56,67,.2) 18px 19px)}
+/* Dynamic Island 是永远黑底的硬件药丸：内部文字锁定浅色，不随主题翻转（否则黑底深字看不见）*/
+[data-theme="light"] .di .di-nm{color:#E8EBD8}
+[data-theme="light"] .di .di-sub{color:#98A092}
+[data-theme="light"] .di .di-ic{background:#0A0D0C}
+/* DI 状态码在亮色下用更亮的荧光值（黑底需要亮字，不用深主题色）*/
+[data-theme="light"] .di.a .di-r{color:#FFB000}
+[data-theme="light"] .di.c .di-r{color:#5CE1E6}
+[data-theme="light"] .di.l .di-r{color:#C4F154}
+
 .wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto}
 
 /* ===================== 顶部指挥栏 ===================== */
@@ -65,6 +132,12 @@ body::after{
 .brand h1 em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--cyan);letter-spacing:0}
 .brand .tag{font-size:11px;color:var(--inkSoft);max-width:34ch;line-height:1.5;margin-top:2px}
 .sysblock{text-align:right;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+/* 主题切换：Dark / Light / System 三段（呼应真身 Settings 设计） */
+.theme-switch{display:inline-flex;gap:0;margin-bottom:4px;border:1px solid var(--rule);border-radius:6px;overflow:hidden;align-self:flex-end}
+.ts-btn{font-family:var(--mono);font-size:8px;letter-spacing:.12em;font-weight:700;padding:5px 9px;background:transparent;color:var(--inkMute);border:0;cursor:pointer;transition:background .2s,color .2s;border-left:1px solid var(--rule)}
+.ts-btn:first-child{border-left:0}
+.ts-btn:hover{color:var(--inkSoft);background:var(--hullUp)}
+.ts-btn.on{background:var(--amber);color:var(--bezel)}
 .sysblock .row{font-size:9.5px;letter-spacing:.14em;color:var(--inkSoft)}
 .sysblock .row b{color:var(--lime);font-weight:700}
 .sysblock .ver{font-family:var(--disp);font-weight:800;font-size:15px;color:var(--ink);letter-spacing:.04em}
@@ -82,12 +155,17 @@ body::after{
 .deck{display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start}
 .phone{
   width:328px;flex-shrink:0;
-  background:var(--abyss);
+  background:var(--bezel);
   border-radius:52px;
   padding:11px;
   box-shadow:0 0 0 2px var(--rule),0 40px 80px rgba(0,0,0,.6),inset 0 0 0 1px #000;
   position:relative;
   animation:rise .8s both;
+}
+/* L0 锁屏手机：环境光晕把主角从背景托起（右侧遥测台变亮后的平衡） */
+.phone.d1::after{
+  content:'';position:absolute;inset:-40px;z-index:-1;pointer-events:none;border-radius:80px;
+  background:radial-gradient(60% 50% at 50% 42%,rgba(255,176,0,.10),transparent 70%);
 }
 .screen{
   background:var(--void);
@@ -96,10 +174,13 @@ body::after{
   position:relative;
   height:680px;
 }
+/* L1 展示态：屏高随内容自适应，一屏看全三桶；tab bar 落到真实底部 */
+.screen.grow{height:auto;min-height:680px}
+.grow .body{height:auto;overflow:visible;padding-bottom:90px}
 /* Dynamic Island */
 .island{
   position:absolute;top:12px;left:50%;transform:translateX(-50%);
-  background:var(--abyss);border-radius:22px;height:37px;
+  background:var(--bezel);border-radius:22px;height:37px;
   z-index:40;display:flex;align-items:center;
   transition:width .45s cubic-bezier(.2,.9,.2,1),padding .45s;
   overflow:hidden;
@@ -118,16 +199,16 @@ body::after{
   position:relative;background:var(--hull);border:1px solid var(--rule);
   border-radius:20px;padding:15px 16px 14px;margin-bottom:12px;overflow:hidden;
 }
-.la::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber);box-shadow:0 0 14px var(--amber)}
+.la::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber);box-shadow:0 0 18px var(--amber),0 0 6px var(--amber)}
 .la .la-top{display:flex;align-items:center;gap:9px;margin-bottom:11px}
 .la .app-ic{width:20px;height:20px;border-radius:6px;background:var(--void);border:1px solid var(--ruleHot);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--amber);font-weight:800}
 .la .app-nm{font-size:9px;letter-spacing:.18em;color:var(--inkSoft);text-transform:uppercase}
 .la .badge{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.1em;padding:3px 7px;border-radius:5px}
-.badge.wait{color:var(--amber);background:rgba(255,176,0,.12);border:1px solid rgba(255,176,0,.4)}
-.badge.run{color:var(--cyan);background:rgba(92,225,230,.12);border:1px solid rgba(92,225,230,.4)}
-.badge.done{color:var(--lime);background:rgba(196,241,84,.12);border:1px solid rgba(196,241,84,.4)}
+.badge.wait{color:var(--amber);background:rgba(255,176,0,.12);border:1px solid rgba(255,176,0,.4);text-shadow:0 0 10px rgba(255,176,0,.7)}
+.badge.run{color:var(--cyan);background:rgba(92,225,230,.12);border:1px solid rgba(92,225,230,.4);text-shadow:0 0 10px rgba(92,225,230,.7)}
+.badge.done{color:var(--lime);background:rgba(196,241,84,.12);border:1px solid rgba(196,241,84,.4);text-shadow:0 0 10px rgba(196,241,84,.7)}
 .la .agent{font-family:var(--disp);font-weight:800;font-size:19px;letter-spacing:-.01em;margin-bottom:4px}
-.la .agent em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--cyan)}
+.la .agent em{font-style:normal;color:var(--cyan)}
 .la .step{font-size:11.5px;color:var(--inkSoft);line-height:1.45;margin-bottom:12px}
 .la .meta{display:flex;align-items:center;gap:8px;font-size:9px;letter-spacing:.1em;color:var(--inkMute)}
 .la .meta .prog{color:var(--cyan);font-weight:700}
@@ -144,9 +225,60 @@ body::after{
 /* ===================== Dynamic Island 三态 strip ===================== */
 .di-strip{display:flex;flex-direction:column;gap:16px;padding-top:6px}
 .di-lab{font-size:9.5px;letter-spacing:.16em;color:var(--inkSoft);margin-bottom:8px}
+
+/* ===== 遥测仪表填充面板（暗物质，非假内容，填 L0 右侧死黑）===== */
+.telemetry{
+  flex:1;min-width:280px;align-self:stretch;position:relative;
+  border:1px solid var(--rule);border-radius:2px;overflow:hidden;
+  background:
+    linear-gradient(180deg,rgba(19,24,22,.28),transparent 40%),
+    var(--void);
+  min-height:420px;
+}
+/* 坐标网格：细十字刻度 */
+.telemetry::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background-image:
+    linear-gradient(90deg,rgba(152,160,146,.055) 1px,transparent 1px),
+    linear-gradient(0deg,rgba(152,160,146,.055) 1px,transparent 1px);
+  background-size:38px 38px;
+}
+/* 扫描环 + 十字准星 */
+.telemetry::after{
+  content:'';position:absolute;top:50%;left:50%;width:320px;height:320px;
+  transform:translate(-50%,-50%);pointer-events:none;
+  border-radius:50%;
+  border:1px solid rgba(92,225,230,.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(92,225,230,.04),
+    0 0 0 60px rgba(0,0,0,0);
+  background:
+    radial-gradient(circle,rgba(92,225,230,.05) 0 1px,transparent 1px) 50% 50%/100% 100% no-repeat,
+    conic-gradient(from 0deg,rgba(92,225,230,.10),transparent 18%,transparent 100%);
+  animation:sweep 6s linear infinite;
+}
+.tele-corner{position:absolute;font-family:var(--mono);font-size:8px;letter-spacing:.16em;color:var(--inkMute)}
+.tele-corner.tl{top:12px;left:12px}
+.tele-corner.tr{top:12px;right:12px;text-align:right}
+.tele-corner.bl{bottom:12px;left:12px}
+.tele-corner.br{bottom:12px;right:12px;text-align:right}
+.tele-corner b{color:var(--inkSoft);font-weight:700}
+.tele-corner .amb{color:var(--amber)} .tele-corner .cy{color:var(--cyan)} .tele-corner .li{color:var(--lime)}
+/* 中心刻度读数 */
+.tele-core{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}
+.tele-core .ring-lab{font-size:8px;letter-spacing:.3em;color:var(--inkMute);margin-bottom:8px}
+.tele-core .big{font-family:var(--disp);font-weight:200;font-size:52px;line-height:1;color:var(--ink);letter-spacing:-.02em}
+.tele-core .big u{color:var(--cyan);text-decoration:none;text-shadow:0 0 16px rgba(92,225,230,.5)}
+.tele-core .unit{font-size:8.5px;letter-spacing:.24em;color:var(--inkSoft);margin-top:8px}
+/* 边缘刻度记号 */
+.tele-ticks{position:absolute;left:0;top:0;bottom:0;width:14px;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent 0 18px,rgba(152,160,146,.14) 18px 19px)}
+.tele-ticks.r{left:auto;right:0}
+@keyframes sweep{to{transform:translate(-50%,-50%) rotate(360deg)}}
+
 .di-lab b{color:var(--ink)}
 .di{
-  background:var(--abyss);border-radius:26px;height:52px;padding:0 16px;
+  background:var(--bezel);border-radius:26px;height:52px;padding:0 16px;
   display:flex;align-items:center;gap:11px;width:300px;position:relative;
   border:1px solid #000;box-shadow:0 8px 24px rgba(0,0,0,.5);
 }
@@ -156,11 +288,11 @@ body::after{
 .di .di-sub{font-size:8.5px;letter-spacing:.08em;color:var(--inkSoft);margin-top:1px}
 .di .di-r{font-size:10px;font-weight:800;letter-spacing:.06em;flex-shrink:0}
 .di.a .di-ic{color:var(--amber);box-shadow:inset 0 0 0 1px rgba(255,176,0,.4)}
-.di.a .di-r{color:var(--amber)}
+.di.a .di-r{color:var(--amber);text-shadow:0 0 12px rgba(255,176,0,.75)}
 .di.c .di-ic{color:var(--cyan);box-shadow:inset 0 0 0 1px rgba(92,225,230,.4)}
-.di.c .di-r{color:var(--cyan)}
+.di.c .di-r{color:var(--cyan);text-shadow:0 0 12px rgba(92,225,230,.75)}
 .di.l .di-ic{color:var(--lime);box-shadow:inset 0 0 0 1px rgba(196,241,84,.4)}
-.di.l .di-r{color:var(--lime)}
+.di.l .di-r{color:var(--lime);text-shadow:0 0 12px rgba(196,241,84,.75)}
 .di .pulse{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .di.a .pulse{background:var(--amber);box-shadow:0 0 8px var(--amber);animation:blink 1.3s steps(1) infinite}
 .di.c .pulse{background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:pulse 1.6s ease-in-out infinite}
@@ -179,8 +311,48 @@ body::after{
 .heads .wtag{position:absolute;top:-1px;left:14px;font-size:7.5px;letter-spacing:.2em;color:var(--inkMute);background:var(--hull);padding:0 5px;transform:translateY(-50%)}
 .heads .cell{flex:1;text-align:center;position:relative}
 .heads .cell+.cell::before{content:'';position:absolute;left:0;top:12%;height:76%;width:1px;background:var(--rule)}
-.heads .n{font-family:var(--disp);font-weight:900;font-size:26px;line-height:1}
+.heads .n{font-family:var(--disp);font-weight:900;font-size:26px;line-height:1;text-shadow:0 0 14px currentColor}
 .heads .l{font-size:7.5px;letter-spacing:.12em;color:var(--inkSoft);margin-top:5px;text-transform:uppercase}
+
+/* ===================== Widget 陈列区（照真身 BarkMateWidgets.swift）===================== */
+.wgrid{display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start}
+.wcol{display:flex;flex-direction:column;gap:11px}
+.wcap{font-size:9px;letter-spacing:.16em;color:var(--inkSoft);text-transform:uppercase}
+.wcap b{color:var(--ink);font-weight:700}
+/* 主屏底纹（模拟 iOS 主屏，让 widget 有落点）*/
+.homebg{background:
+    radial-gradient(120% 90% at 20% 0%,rgba(255,176,0,.05),transparent 55%),
+    linear-gradient(160deg,var(--hullUp),var(--void));
+  padding:18px;border-radius:26px;border:1px solid var(--rule)}
+[data-theme="light"] .homebg{background:linear-gradient(160deg,var(--hullUp),var(--hull));}
+/* Widget 卡通用 */
+.wg{background:var(--hull);border:1px solid var(--rule);border-radius:20px;position:relative;overflow:hidden}
+.wg .wg-tag{position:absolute;top:9px;left:11px;font-size:7px;letter-spacing:.18em;color:var(--inkMute);font-weight:700}
+/* systemSmall：正方，三桶大计数 */
+.wg-sm{width:158px;height:158px;padding:30px 14px 14px;display:flex;flex-direction:column}
+.wg-sm .rows{display:flex;flex-direction:column;gap:9px;margin-top:auto}
+.wg-sm .r{display:flex;align-items:center;gap:9px}
+.wg-sm .r .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.wg-sm .r .n{font-family:var(--disp);font-weight:900;font-size:26px;line-height:.9;min-width:30px}
+.wg-sm .r .l{font-size:8px;letter-spacing:.1em;color:var(--inkSoft);text-transform:uppercase}
+/* systemMedium：宽，左三计数 + 右 top needs-you */
+.wg-md{width:338px;height:158px;padding:30px 16px 16px;display:flex;gap:16px}
+.wg-md .left{display:flex;flex-direction:column;gap:8px;justify-content:center;border-right:1px solid var(--rule);padding-right:16px}
+.wg-md .left .r{display:flex;align-items:baseline;gap:7px}
+.wg-md .left .r .n{font-family:var(--disp);font-weight:900;font-size:22px;line-height:1;min-width:24px}
+.wg-md .left .r .l{font-size:7.5px;letter-spacing:.1em;color:var(--inkSoft);text-transform:uppercase}
+.wg-md .right{flex:1;display:flex;flex-direction:column;justify-content:center;gap:6px;min-width:0}
+.wg-md .right .top-lab{font-size:7.5px;letter-spacing:.16em;color:var(--inkMute);text-transform:uppercase}
+.wg-md .right .an{font-family:var(--disp);font-weight:800;font-size:16px}
+.wg-md .right .code{font-size:8.5px;font-weight:800;letter-spacing:.1em;color:var(--amber)}
+.wg-md .right .st{font-size:9.5px;color:var(--inkSoft);line-height:1.35}
+/* accessoryRectangular：锁屏单色，无背景色 */
+.wg-acc{width:200px;height:76px;background:transparent;border:1px dashed var(--rule);border-radius:12px;padding:11px 13px;display:flex;flex-direction:column;justify-content:center;gap:5px}
+.wg-acc .acc-h{font-size:8px;letter-spacing:.14em;color:var(--inkSoft);text-transform:uppercase;font-weight:700}
+.wg-acc .acc-row{display:flex;align-items:baseline;gap:6px;font-family:var(--disp);font-weight:800;font-size:15px;color:var(--ink)}
+.wg-acc .acc-row small{font-size:8px;font-weight:400;color:var(--inkSoft);letter-spacing:.08em}
+.wg-acc .acc-note{font-size:7.5px;color:var(--inkMute);letter-spacing:.06em}
+.mono-hint{font-size:8px;color:var(--inkMute);letter-spacing:.06em;font-style:italic;margin-top:2px}
 
 /* section header */
 .grp{margin-bottom:20px}
@@ -197,8 +369,8 @@ body::after{
 .bigcard .top{display:flex;align-items:center;gap:9px;margin-bottom:11px}
 .bigcard .av{width:30px;height:30px;border-radius:9px;background:var(--void);border:1px solid var(--ruleHot);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--cyan)}
 .bigcard .nm{font-family:var(--disp);font-weight:800;font-size:17px}
-.bigcard .nm em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--cyan)}
-.bigcard .code{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--amber);border:1px solid rgba(255,176,0,.4);padding:3px 7px;border-radius:5px;background:rgba(255,176,0,.1)}
+.bigcard .nm em{font-style:normal;color:var(--cyan)}
+.bigcard .code{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--amber);border:1px solid rgba(255,176,0,.4);padding:3px 7px;border-radius:5px;background:rgba(255,176,0,.1);text-shadow:0 0 10px rgba(255,176,0,.6)}
 .bigcard .ask{font-size:12px;color:var(--ink);line-height:1.5;padding-left:11px;border-left:2px solid var(--ruleHot);margin-bottom:11px}
 .bigcard .ask::before{content:'» ';color:var(--amber);font-weight:700}
 .bigcard .foot{display:flex;gap:10px;font-size:8.5px;letter-spacing:.1em;color:var(--inkMute)}
@@ -220,8 +392,8 @@ body::after{
 .srow::before{content:'';position:absolute;left:13px;top:0;bottom:0;width:1px;background:var(--rule)}
 .srow .rc{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .srow .rn{font-size:11.5px;font-weight:500;color:var(--ink)}
-.srow .rs{margin-left:auto;font-size:8px;font-weight:800;letter-spacing:.08em}
-.srow .rp{font-size:9px;color:var(--cyan);font-weight:700;letter-spacing:.05em}
+.srow .rs{margin-left:auto;font-size:8px;font-weight:800;letter-spacing:.08em;text-shadow:0 0 8px currentColor}
+.srow .rp{font-size:9px;color:var(--cyan);font-weight:700;letter-spacing:.05em;text-shadow:0 0 8px rgba(92,225,230,.6)}
 
 /* 单 session 退化卡 */
 .flat{display:flex;align-items:center;gap:11px;padding:12px 13px;border:1px solid var(--rule);border-radius:12px;background:var(--hull);margin-bottom:9px}
@@ -229,10 +401,10 @@ body::after{
 .flat .fn{font-family:var(--disp);font-weight:700;font-size:13px}
 .flat .fs{font-size:10.5px;color:var(--inkSoft);margin-top:1px}
 .flat .fr{margin-left:auto;text-align:right;flex-shrink:0}
-.flat .frs{font-size:8.5px;font-weight:800;letter-spacing:.08em}
-.flat .frp{font-size:9px;color:var(--cyan);font-weight:700;margin-top:2px}
+.flat .frs{font-size:8.5px;font-weight:800;letter-spacing:.08em;text-shadow:0 0 8px currentColor}
+.flat .frp{font-size:9px;color:var(--cyan);font-weight:700;margin-top:2px;text-shadow:0 0 8px rgba(92,225,230,.6)}
 .progbar{height:3px;background:var(--rule);border-radius:2px;overflow:hidden;margin-top:8px}
-.progbar i{display:block;height:100%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:fill 1.4s cubic-bezier(.2,.8,.2,1) both}
+.progbar i{display:block;height:100%;background:var(--cyan);box-shadow:0 0 6px var(--cyan),0 0 14px rgba(92,225,230,.6);animation:fill 1.4s cubic-bezier(.2,.8,.2,1) both}
 
 /* settled 行 */
 .settled-row{display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid var(--rule)}
@@ -240,10 +412,10 @@ body::after{
 .settled-row .sn{font-size:11.5px;color:var(--inkSoft)}
 .settled-row .badge2{margin-left:auto;font-size:7.5px;font-weight:800;letter-spacing:.12em;padding:2px 6px;border-radius:4px}
 .settled-row .t{font-size:8.5px;color:var(--inkMute);letter-spacing:.06em;min-width:44px;text-align:right}
-.b-done{color:var(--lime);background:rgba(196,241,84,.1)}
-.b-fail{color:var(--magenta);background:rgba(255,77,141,.1)}
+.b-done{color:var(--lime);background:rgba(196,241,84,.1);text-shadow:0 0 8px rgba(196,241,84,.6)}
+.b-fail{color:var(--magenta);background:rgba(255,77,141,.1);text-shadow:0 0 8px rgba(255,77,141,.6)}
 .b-stale{color:var(--inkMute);background:rgba(113,119,113,.12)}
-.b-bark{color:var(--cyan);background:rgba(92,225,230,.08)}
+.b-bark{color:var(--cyan);background:rgba(92,225,230,.08);text-shadow:0 0 8px rgba(92,225,230,.5)}
 .merged-note{font-size:8.5px;color:var(--inkMute);letter-spacing:.08em;text-align:center;padding:8px 0 2px;font-style:italic}
 
 /* 2 Tab bar */
@@ -255,8 +427,34 @@ body::after{
 .tab.off .g,.tab.off .tl{color:var(--inkMute)}
 .tab.on::before{content:'';position:absolute;top:-11px;width:22px;height:2px;background:var(--amber);box-shadow:0 0 8px var(--amber)}
 
-/* 说明侧栏 */
-.aside{width:300px;flex-shrink:0}
+/* ===================== Settings 屏 (真身 SettingsView 四段) ===================== */
+.console{padding:56px 18px 14px;border-bottom:1px solid var(--rule)}
+.console .kk{font-size:9px;letter-spacing:.28em;color:var(--amber);font-weight:700;margin-bottom:7px}
+.console h3{font-family:var(--disp);font-weight:900;font-size:24px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+.console h3 .plus{margin-left:auto;width:26px;height:26px;border:1px solid var(--rule);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--amber)}
+.set-body{padding:16px 14px 90px}
+.set-sec{margin-bottom:22px}
+.set-sh{display:flex;align-items:baseline;gap:8px;margin-bottom:9px}
+.set-sh .st{font-size:10px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;color:var(--ink)}
+.set-sh .stt{margin-left:auto;font-size:8.5px;letter-spacing:.08em;color:var(--inkMute)}
+.srow2{display:flex;align-items:center;gap:12px;padding:13px 12px;border:1px solid var(--rule);border-top:0;background:var(--hull)}
+.set-sec .srow2:first-of-type{border-top:1px solid var(--rule);border-radius:11px 11px 0 0}
+.set-sec .srow2:last-of-type{border-radius:0 0 11px 11px}
+.set-sec .srow2:only-of-type{border-radius:11px}
+.srow2 .ic{width:26px;height:26px;border-radius:7px;background:var(--void);border:1px solid var(--ruleHot);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--cyan);flex-shrink:0}
+.srow2 .mid{flex:1;min-width:0}
+.srow2 .rt{font-size:12px;font-weight:500;color:var(--ink)}
+.srow2 .rd{font-size:9.5px;color:var(--inkSoft);margin-top:3px;line-height:1.4}
+.srow2 .val{font-size:11px;font-weight:700;color:var(--amber);letter-spacing:.02em;flex-shrink:0}
+.srow2 .chev{font-size:11px;color:var(--inkMute);flex-shrink:0}
+/* toggle */
+.tgl{width:38px;height:22px;border-radius:12px;background:var(--cyan);position:relative;flex-shrink:0;box-shadow:0 0 10px rgba(92,225,230,.35)}
+.tgl::after{content:'';position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:var(--abyss)}
+/* server 健康度徽章 */
+.sbadge{font-size:7.5px;font-weight:800;letter-spacing:.1em;padding:3px 7px;border-radius:5px;flex-shrink:0;color:var(--lime);background:rgba(196,241,84,.1);border:1px solid rgba(196,241,84,.35);text-shadow:0 0 8px rgba(196,241,84,.6)}
+.stale-hl{color:var(--amber)!important;text-shadow:0 0 10px rgba(255,176,0,.6)}
+
+
 .aside .card{border:1px solid var(--rule);background:var(--hull);padding:16px 17px;margin-bottom:14px;position:relative}
 .aside .card .tag{position:absolute;top:-8px;left:14px;font-size:8px;letter-spacing:.16em;background:var(--void);padding:0 6px;font-weight:700}
 .aside .card.g1 .tag{color:var(--amber)} .aside .card.g2 .tag{color:var(--cyan)} .aside .card.g3 .tag{color:var(--lime)}
@@ -289,10 +487,15 @@ body::after{
     <span class="corner bl"></span><span class="corner br"></span>
     <div class="brand">
       <div class="kick">BARKMATE // MISSION CONTROL</div>
-      <h1>你余光里的<br><em>agent</em> 生命体征</h1>
+      <h1>你余光里的<br>agent 生命体征</h1>
       <div class="tag">重心从「打开 app 看 dashboard」下移到「不打开也能瞄」。锁屏 / Widget / Live Activity 是主战场。</div>
     </div>
     <div class="sysblock">
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button class="ts-btn" data-set="dark">◑ DARK</button>
+        <button class="ts-btn" data-set="light">◒ LIGHT</button>
+        <button class="ts-btn on" data-set="system">⎈ SYSTEM</button>
+      </div>
       <div class="ver">v0.5 · glance-first</div>
       <div class="row"><span class="live-dot"></span>NSE <b>LIVE</b></div>
       <div class="row">STALE THRESHOLD · <b>15 MIN</b></div>
@@ -381,6 +584,77 @@ body::after{
         <b style="color:var(--magenta)">边界：</b>app 被系统<b style="color:var(--ink)">完全杀掉</b>时的冷态更新走不通 → 需 Server LA push（<span style="color:var(--lime)">P1</span>）。
       </div>
     </div>
+
+    <!-- 遥测仪表面板：填 L0 右侧暗物质 -->
+    <div class="telemetry">
+      <div class="tele-ticks"></div><div class="tele-ticks r"></div>
+      <div class="tele-corner tl"><b>TELEMETRY</b><br>NSE · ONLINE</div>
+      <div class="tele-corner tr">PUSH LATENCY<br><span class="cy">◂ 220ms</span></div>
+      <div class="tele-corner bl">GLANCE REFRESH<br><span class="li">reloadTimelines ✓</span></div>
+      <div class="tele-corner br">LA TOKENS<br><span class="amb">3 ACTIVE</span></div>
+      <div class="tele-core">
+        <div class="ring-lab">ACTIVE AGENTS</div>
+        <div class="big"><u>5</u></div>
+        <div class="unit">2 WAIT · 3 RUN</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== WIDGET 陈列区 ===== -->
+  <div class="sec-head">
+    <span class="idx">W</span>
+    <h2>WIDGETS · 主屏 &amp; 锁屏</h2>
+    <div class="note">真身 <u>BarkMateWidgets.swift</u> · systemSmall / Medium + 锁屏 accessory</div>
+  </div>
+
+  <div class="wgrid">
+    <!-- systemSmall -->
+    <div class="wcol">
+      <div class="homebg">
+        <div class="wg wg-sm">
+          <span class="wg-tag">ACTIVE AGENTS</span>
+          <div class="rows">
+            <div class="r"><span class="dot" style="background:var(--amber)"></span><span class="n" style="color:var(--amber)">2</span><span class="l">needs you</span></div>
+            <div class="r"><span class="dot" style="background:var(--cyan)"></span><span class="n" style="color:var(--cyan)">3</span><span class="l">running</span></div>
+            <div class="r"><span class="dot" style="background:var(--lime)"></span><span class="n" style="color:var(--lime)">5</span><span class="l">settled</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="wcap"><b>systemSmall</b> · 三桶大计数</div>
+    </div>
+
+    <!-- systemMedium -->
+    <div class="wcol">
+      <div class="homebg">
+        <div class="wg wg-md">
+          <span class="wg-tag">ACTIVE AGENTS</span>
+          <div class="left">
+            <div class="r"><span class="n" style="color:var(--amber)">2</span><span class="l">wait</span></div>
+            <div class="r"><span class="n" style="color:var(--cyan)">3</span><span class="l">run</span></div>
+            <div class="r"><span class="n" style="color:var(--lime)">5</span><span class="l">settled</span></div>
+          </div>
+          <div class="right">
+            <div class="top-lab">↑ top · needs you</div>
+            <div class="an">test-writer</div>
+            <div class="code">⏻ WAIT</div>
+            <div class="st">请确认是否覆盖现有 mock 文件</div>
+          </div>
+        </div>
+      </div>
+      <div class="wcap"><b>systemMedium</b> · 计数 + 最紧要 agent</div>
+    </div>
+
+    <!-- accessoryRectangular（锁屏）-->
+    <div class="wcol">
+      <div class="homebg" style="background:linear-gradient(160deg,#1a1a1f,#0d0d10)">
+        <div class="wg-acc">
+          <div class="acc-h">⌚ BARKMATE</div>
+          <div class="acc-row">2<small>WAIT</small> · 3<small>RUN</small> · 5<small>DONE</small></div>
+          <div class="acc-note">test-writer needs you</div>
+        </div>
+      </div>
+      <div class="wcap"><b>accessoryRectangular</b> · 锁屏 <span class="mono-hint">（G1.6 补建 · 单色染色）</span></div>
+    </div>
   </div>
 
   <!-- ===== L1 TRIAGE ===== -->
@@ -394,7 +668,7 @@ body::after{
     <div>
       <div class="phone d2">
         <div class="island" style="width:110px"></div>
-        <div class="screen">
+        <div class="screen grow">
           <div class="appbar">
             <h3>Agents</h3>
             <div class="srv"><i>+</i><i>☁</i></div>
@@ -486,6 +760,95 @@ body::after{
       <div class="phone-cap">Agents · 三桶 triage · 2 Tab</div>
     </div>
 
+    <!-- Settings 屏（第 2 Tab · 真身四段） -->
+    <div>
+      <div class="phone d3">
+        <div class="island" style="width:110px"></div>
+        <div class="screen grow">
+          <div class="console">
+            <div class="kk">BARKMATE // CONFIG</div>
+            <h3>Settings <span class="plus">+</span></h3>
+          </div>
+          <div class="set-body">
+
+            <!-- CONFIG -->
+            <div class="set-sec">
+              <div class="set-sh"><span class="st">Config</span><span class="stt">adjust here</span></div>
+              <div class="srow2">
+                <div class="ic">◐</div>
+                <div class="mid"><div class="rt">Time-Sensitive alerts</div><div class="rd">blocked / failed 突破专注模式</div></div>
+                <div class="tgl"></div>
+              </div>
+              <div class="srow2">
+                <div class="ic">♪</div>
+                <div class="mid"><div class="rt">Alert sound</div><div class="rd">per-status 提示音覆盖</div></div>
+                <div class="val" style="color:var(--ink)">Glass</div>
+                <div class="chev">›</div>
+              </div>
+              <div class="srow2">
+                <div class="ic">◷</div>
+                <div class="mid"><div class="rt">Stale timeout</div><div class="rd">Running &gt; 此窗口 → auto-demote to Settled · Stale</div></div>
+                <div class="val stale-hl">15 min</div>
+                <div class="chev">›</div>
+              </div>
+            </div>
+
+            <!-- STATUS -->
+            <div class="set-sec">
+              <div class="set-sh"><span class="st">Status</span><span class="stt">2 servers</span></div>
+              <div class="srow2">
+                <div class="ic" style="color:var(--lime)">☁</div>
+                <div class="mid"><div class="rt">api.day.app</div><div class="rd">APNs registered · checked 2m ago</div></div>
+                <div class="sbadge">OK</div>
+              </div>
+              <div class="srow2">
+                <div class="ic" style="color:var(--lime)">☁</div>
+                <div class="mid"><div class="rt">bark.self.host</div><div class="rd">APNs registered · checked 6m ago</div></div>
+                <div class="sbadge">OK</div>
+              </div>
+            </div>
+
+            <!-- ROUTES -->
+            <div class="set-sec">
+              <div class="set-sh"><span class="st">Routes</span><span class="stt">entries &amp; links</span></div>
+              <div class="srow2">
+                <div class="ic">⊞</div>
+                <div class="mid"><div class="rt">Servers</div><div class="rd">列表 · 添加 · 密钥管理</div></div>
+                <div class="chev">›</div>
+              </div>
+              <div class="srow2">
+                <div class="ic" style="color:var(--amber)">➜</div>
+                <div class="mid"><div class="rt">接入向导 · Setup guide</div><div class="rd">curl 模板 · 发一条 demo 推送</div></div>
+                <div class="chev">›</div>
+              </div>
+            </div>
+
+            <!-- ABOUT -->
+            <div class="set-sec">
+              <div class="set-sh"><span class="st">About</span><span class="stt">privacy · ref</span></div>
+              <div class="srow2">
+                <div class="ic">⊘</div>
+                <div class="mid"><div class="rt">Privacy policy</div><div class="rd">Analytics off · 无遥测 · 数据全本地</div></div>
+                <div class="chev">›</div>
+              </div>
+              <div class="srow2">
+                <div class="ic">◈</div>
+                <div class="mid"><div class="rt">Bark protocol reference</div><div class="rd">github.com/Finb/Bark</div></div>
+                <div class="chev">›</div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="tabbar">
+            <div class="tab off"><span class="g">▦</span><span class="tl">Agents</span></div>
+            <div class="tab on"><span class="g">⚙</span><span class="tl">Settings</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-cap">Settings · 第 2 Tab · Config/Status/Routes/About</div>
+    </div>
+
     <!-- 说明侧栏：三条工作线 -->
     <div class="aside">
       <div class="card g1 d1">
@@ -524,6 +887,21 @@ function tgl(id){document.getElementById(id).classList.toggle('open');}
 const island=document.getElementById('island');
 const states=[126,180,110];let si=0;
 setInterval(()=>{si=(si+1)%states.length;island.style.width=states[si]+'px';},2600);
+
+// ===== 主题切换：Dark / Light / System（呼应真身 Settings 三选 + 随系统）=====
+const root=document.documentElement;
+const mql=window.matchMedia('(prefers-color-scheme: light)');
+let mode='system';   // 'dark' | 'light' | 'system'
+function apply(){
+  const eff=(mode==='system')?(mql.matches?'light':'dark'):mode;
+  root.setAttribute('data-theme',eff);
+  document.querySelectorAll('.ts-btn').forEach(b=>b.classList.toggle('on',b.dataset.set===mode));
+}
+document.querySelectorAll('.ts-btn').forEach(b=>{
+  b.addEventListener('click',()=>{mode=b.dataset.set;apply();});
+});
+mql.addEventListener('change',()=>{if(mode==='system')apply();});
+apply();
 </script>
 </body>
 </html>

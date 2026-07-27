@@ -71,6 +71,7 @@ targets:
           - zh-Hans
         ITSAppUsesNonExemptEncryption: false
         LSRequiresIPhoneOS: true
+        NSSupportsLiveActivities: true
         UIRequiresFullScreen: true
         UILaunchScreen:
           UIColorName: ""

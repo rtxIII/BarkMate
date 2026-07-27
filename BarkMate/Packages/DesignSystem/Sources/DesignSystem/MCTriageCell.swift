@@ -20,53 +20,82 @@ public struct MCTriageCell: View {
     private let count: Int
     private let bucket: MissionControl.Status.Bucket
     private let subtitle: String
+    private let isSelected: Bool
+    private let onTap: (() -> Void)?
 
-    /// - Parameter subtitle: 数字下方的小字。mock B 用于动态计数文案
-    ///   (如 "02 CI · 01 agent" / "01 done · 01 fail"),由 caller 根据实际数据生成。
-    public init(count: Int, bucket: MissionControl.Status.Bucket, subtitle: String) {
+    /// - Parameters:
+    ///   - subtitle: 数字下方的小字。mock B 用于动态计数文案
+    ///     (如 "02 CI · 01 agent" / "01 done · 01 fail"),由 caller 根据实际数据生成。
+    ///   - isSelected: 作为页面过滤器时的选中态(bucket 色实心反白)。默认 false。
+    ///   - onTap: 提供后 cell 变为可点按的过滤入口;nil 时退化为纯展示。
+    public init(
+        count: Int,
+        bucket: MissionControl.Status.Bucket,
+        subtitle: String,
+        isSelected: Bool = false,
+        onTap: (() -> Void)? = nil
+    ) {
         self.count = count
         self.bucket = bucket
         self.subtitle = subtitle
+        self.isSelected = isSelected
+        self.onTap = onTap
     }
 
     public var body: some View {
+        let content = cellContent
+        if let onTap {
+            Button(action: onTap) { content }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("triage-cell-\(bucket.rawValue)")
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        } else {
+            content
+        }
+    }
+
+    private var cellContent: some View {
         let isAlert = bucket == .needsYou
         let accent = MissionControl.Status.bucketColor(bucket)
+        // 选中(过滤激活)→ bucket 色实心 + void 深字反白;数字/标题/小字都压深色。
+        let numberColor = isSelected ? MissionControl.Color.void : accent
+        let labelColor = isSelected ? MissionControl.Color.void : MissionControl.Color.inkSoft
 
         return VStack(alignment: .leading, spacing: 6) {
             Text(formattedCount)
                 .font(MissionControl.Font.interTight(size: 44, weight: .black))
                 .tracking(-2.2)
-                .foregroundStyle(accent)
+                .foregroundStyle(numberColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
 
             Text(MissionControl.Status.bucketTitle(bucket).uppercased())
                 .font(MissionControl.Font.jetBrainsMono(size: 9, weight: .bold))
                 .tracking(1.3)
-                .foregroundStyle(MissionControl.Color.inkSoft)
+                .foregroundStyle(labelColor)
 
             Text(subtitle)
                 .font(MissionControl.Font.jetBrainsMono(size: 9.5, weight: .regular))
-                .foregroundStyle(MissionControl.Color.inkSoft)
+                .foregroundStyle(labelColor)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MissionControl.Color.void)
+        .background(isSelected ? accent : MissionControl.Color.void)
         .overlay(
             Rectangle()
                 .stroke(
-                    isAlert ? MissionControl.Color.amber : MissionControl.Color.rule,
+                    isSelected ? accent : (isAlert ? MissionControl.Color.amber : MissionControl.Color.rule),
                     lineWidth: MissionControl.Border.hairline
                 )
         )
         .overlay {
-            if isAlert {
+            if isAlert && !isSelected {
                 Rectangle()
                     .stroke(MissionControl.Color.amberGlow, lineWidth: 1)
                     .padding(MissionControl.Border.hairline)
             }
         }
+        .contentShape(Rectangle())
     }
 
     private var formattedCount: String {

@@ -52,6 +52,7 @@ final class PendingQueueDrainer {
                 }
             }
             dprint("[Drainer] processed \(pending.count) pending message(s)")
+            GlanceRefresh.reload()   // 线 A:drain 落库后同刷 glance
         } catch {
             BarkLog.storage.error("drain failed: \(error.localizedDescription, privacy: .public)")
         }

@@ -60,6 +60,34 @@ public struct BarkClient: BarkClientProtocol {
         return payload.code == HTTPStatus.ok
     }
 
+    // MARK: - Live Activity registration
+
+    public func registerLiveActivity(
+        token: String,
+        aggregateKey: String,
+        serverURL: URL,
+        deviceKey: String
+    ) async throws {
+        let json: [String: String] = [
+            "device_key": deviceKey,
+            "aggregate_key": aggregateKey,
+            "token": token,
+        ]
+        let body = try JSONSerialization.data(withJSONObject: json)
+        var request = try makeRequest(
+            serverURL: serverURL,
+            path: "/liveactivity/register",
+            method: "POST",
+            body: body
+        )
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let (data, response) = try await sendRequest(request)
+        try validateHTTPStatus(response)
+        let payload = try decode(PingResponse.self, from: data)
+        try validateBarkCode(payload.code, message: payload.message)
+    }
+
     // MARK: - Internals
 
     private func makeRequest(

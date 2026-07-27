@@ -44,7 +44,10 @@ public struct MCConsoleHeader<Trailing: View>: View {
         Group {
             if hasTitle {
                 VStack(alignment: .leading, spacing: 6) {
-                    crumbsRow
+                    // crumbs 为空时省略面包屑行(只留标题 + 底线)。其余调用方仍传非空 crumbs。
+                    if !crumbs.isEmpty {
+                        crumbsRow
+                    }
                     titleRow
                 }
             } else {

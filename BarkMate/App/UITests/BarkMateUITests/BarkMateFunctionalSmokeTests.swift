@@ -22,9 +22,6 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
             app.debugDescription
         )
 
-        app.buttons["tab-history"].tap()
-        XCTAssertTrue(app.staticTexts["History fills in once tasks finish or pushes arrive."].waitForExistence(timeout: 2))
-
         app.buttons["tab-settings"].tap()
         XCTAssertTrue(app.staticTexts["Manage servers"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Auto-installed"].exists)
@@ -420,40 +417,22 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
         XCTAssertTrue(barkReference.isHittable, app.debugDescription)
     }
 
-    func testHistoryFiltersSeededTimelineItems() {
+    /// G2:History Tab 已删,内容折入 Agents 的 Settled 段。
+    /// done/failed → 可见 Settled 卡;stale / 旧协议 [BARK] → ARCHIVE 折叠子段(展开可达)。
+    func testSettledAbsorbsSeededHistoryItems() {
         launchApp(seedScenario: "search-history")
 
-        app.buttons["tab-history"].tap()
+        // done / failed 直接作为可见的 Settled 卡呈现
+        XCTAssertTrue(app.staticTexts["History Done Probe"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Search Failure Probe"].exists, app.debugDescription)
 
-        XCTAssertTrue(app.staticTexts["History Stale Probe"].waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertTrue(app.staticTexts["History Done Probe"].exists)
-        XCTAssertTrue(app.staticTexts["Incoming Alert Probe"].exists)
-
-        app.buttons["history-filter-stale"].tap()
-        XCTAssertTrue(app.staticTexts["History Stale Probe"].waitForExistence(timeout: 2))
-
-        app.buttons["history-filter-incoming"].tap()
-        XCTAssertTrue(app.staticTexts["Incoming Alert Probe"].waitForExistence(timeout: 2))
-
-        app.buttons["history-filter-archived"].tap()
-        XCTAssertTrue(app.staticTexts["History Done Probe"].waitForExistence(timeout: 2))
-    }
-
-    func testHistoryAllFilterRestoresSeededTimelineItems() {
-        launchApp(seedScenario: "search-history")
-
-        app.buttons["tab-history"].tap()
-
-        XCTAssertTrue(app.staticTexts["History Stale Probe"].waitForExistence(timeout: 5), app.debugDescription)
-
-        app.buttons["history-filter-stale"].tap()
-        XCTAssertTrue(app.staticTexts["History Stale Probe"].waitForExistence(timeout: 2))
-
-        app.buttons["history-filter-all"].tap()
+        // stale 与旧协议 [BARK] 折入 ARCHIVE 折叠子段,展开后可达
+        let disclosure = app.buttons["dashboard-archive-disclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5), app.debugDescription)
+        disclosure.tap()
 
         XCTAssertTrue(app.staticTexts["History Stale Probe"].waitForExistence(timeout: 2), app.debugDescription)
-        XCTAssertTrue(app.staticTexts["History Done Probe"].exists)
-        XCTAssertTrue(app.staticTexts["Incoming Alert Probe"].exists)
+        XCTAssertTrue(app.staticTexts["Incoming Alert Probe"].exists, app.debugDescription)
     }
 
     func testSeededAgentDetailSupportsPrimaryActions() {
@@ -527,12 +506,10 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
         seededTask.press(forDuration: 1)
         tapMenuOption(identifier: "Archive", label: "Archive")
 
-        XCTAssertTrue(
-            app.staticTexts["Send one push. Get one living card."].waitForExistence(timeout: 3),
-            app.debugDescription
-        )
-
-        app.buttons["tab-history"].tap()
+        // G2:归档后任务离开活跃区,折入 Settled ARCHIVE 折叠子段(展开可达)。
+        let disclosure = app.buttons["dashboard-archive-disclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 3), app.debugDescription)
+        disclosure.tap()
         XCTAssertTrue(app.staticTexts["Codex Coverage Probe"].waitForExistence(timeout: 3), app.debugDescription)
     }
 
@@ -551,7 +528,7 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Codex Coverage Probe"].exists, app.debugDescription)
     }
 
-    func testAgentDetailArchiveMovesTaskFromDashboardIntoHistory() {
+    func testAgentDetailArchiveMovesTaskFromDashboardIntoSettledArchive() {
         launchApp(seedScenario: "agent-detail")
 
         XCTAssertTrue(app.staticTexts["Codex Coverage Probe"].waitForExistence(timeout: 5), app.debugDescription)
@@ -561,12 +538,10 @@ final class BarkMateFunctionalSmokeTests: XCTestCase {
         app.buttons["agent-detail-archive"].tap()
         app.buttons["←"].tap()
 
-        XCTAssertTrue(
-            app.staticTexts["Send one push. Get one living card."].waitForExistence(timeout: 3),
-            app.debugDescription
-        )
-
-        app.buttons["tab-history"].tap()
+        // G2:归档后折入 Settled ARCHIVE 折叠子段(展开可达),不再是独立 History Tab。
+        let disclosure = app.buttons["dashboard-archive-disclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 3), app.debugDescription)
+        disclosure.tap()
         XCTAssertTrue(app.staticTexts["Codex Coverage Probe"].waitForExistence(timeout: 3), app.debugDescription)
     }
 

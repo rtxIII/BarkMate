@@ -68,8 +68,8 @@ public enum StaleThreshold: Equatable, Hashable, Sendable {
 public enum StaleThresholdCatalog {
     /// Settings picker 档位。
     public static let options: [StaleThreshold] =
-        [.off, .minutes(10), .minutes(30), .minutes(60), .minutes(120)]
+        [.off, .minutes(10), .minutes(15), .minutes(30), .minutes(60), .minutes(120)]
 
     /// 未配置时的默认阈值。
-    public static let defaultThreshold: StaleThreshold = .minutes(30)
+    public static let defaultThreshold: StaleThreshold = .minutes(15)
 }

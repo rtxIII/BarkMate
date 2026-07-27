@@ -22,4 +22,17 @@ public protocol BarkClientProtocol: Sendable {
     /// 健康检查。
     /// - Returns: 服务器返回 `code == 200` 时为 true
     func ping(serverURL: URL) async throws -> Bool
+
+    /// 登记 / 注销某任务的 Live Activity push token，供服务端自动 fan-out 远程更新。
+    /// - Parameters:
+    ///   - token: ActivityKit 的 per-activity push token（hex）；注销时传 `"deleted"`
+    ///   - aggregateKey: 任务聚合键 `<agentID>::<taskID-or-_>`，与推送落库键一致
+    ///   - serverURL: Bark 服务器根 URL
+    ///   - deviceKey: 该服务器分配的 device key
+    func registerLiveActivity(
+        token: String,
+        aggregateKey: String,
+        serverURL: URL,
+        deviceKey: String
+    ) async throws
 }

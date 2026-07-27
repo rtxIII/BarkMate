@@ -38,20 +38,15 @@ final class BarkMateAppStoreScreenshotTests: XCTestCase {
         capture("02-agent-detail")
         if app.buttons["←"].exists { app.buttons["←"].tap() }
 
-        // 3. History。
-        app.buttons["tab-history"].tap()
-        XCTAssertTrue(app.buttons["tab-history"].waitForExistence(timeout: 5), app.debugDescription)
-        capture("03-history")
-
-        // 4. Settings。
+        // 3. Settings。
         app.buttons["tab-settings"].tap()
         XCTAssertTrue(app.buttons["settings-manage-servers"].waitForExistence(timeout: 5), app.debugDescription)
-        capture("04-settings")
+        capture("03-settings")
 
-        // 5. Setup —— 从 settings 打开安装向导。
+        // 4. Setup —— 从 settings 打开安装向导。
         app.buttons["settings-rerun-installer"].tap()
         XCTAssertTrue(app.buttons["setup-copy-install"].waitForExistence(timeout: 3), app.debugDescription)
-        capture("05-setup")
+        capture("04-setup")
     }
 
     private func launchShowcase() {

@@ -18,9 +18,16 @@ import SwiftUI
 
 public struct MCHeadsUpPanel: View {
     private let counts: AgentHeroCounts
+    private let selectedBucket: Binding<MissionControl.Status.Bucket?>?
 
-    public init(counts: AgentHeroCounts) {
+    /// - Parameter selectedBucket: 提供后三格变为页面过滤器(点选高亮、再点取消);
+    ///   nil 时退化为纯展示,兼容旧调用点。
+    public init(
+        counts: AgentHeroCounts,
+        selectedBucket: Binding<MissionControl.Status.Bucket?>? = nil
+    ) {
         self.counts = counts
+        self.selectedBucket = selectedBucket
     }
 
     public var body: some View {
@@ -35,9 +42,9 @@ public struct MCHeadsUpPanel: View {
             .foregroundStyle(MissionControl.Color.inkSoft)
 
             HStack(alignment: .top, spacing: 8) {
-                MCTriageCell(count: needsYouCount, bucket: .needsYou, subtitle: needsYouSubtitle)
-                MCTriageCell(count: runningCount, bucket: .running, subtitle: runningSubtitle)
-                MCTriageCell(count: settledCount, bucket: .settled, subtitle: settledSubtitle)
+                triageCell(count: needsYouCount, bucket: .needsYou, subtitle: needsYouSubtitle)
+                triageCell(count: runningCount, bucket: .running, subtitle: runningSubtitle)
+                triageCell(count: settledCount, bucket: .settled, subtitle: settledSubtitle)
             }
         }
         .padding(14)
@@ -46,6 +53,28 @@ public struct MCHeadsUpPanel: View {
             Rectangle()
                 .stroke(MissionControl.Color.rule, lineWidth: MissionControl.Border.hairline)
         )
+    }
+
+    /// 有 selectedBucket → 可点按过滤(toggle 取消);无 → 纯展示。
+    @ViewBuilder
+    private func triageCell(
+        count: Int,
+        bucket: MissionControl.Status.Bucket,
+        subtitle: String
+    ) -> some View {
+        if let selectedBucket {
+            MCTriageCell(
+                count: count,
+                bucket: bucket,
+                subtitle: subtitle,
+                isSelected: selectedBucket.wrappedValue == bucket,
+                onTap: {
+                    selectedBucket.wrappedValue = selectedBucket.wrappedValue == bucket ? nil : bucket
+                }
+            )
+        } else {
+            MCTriageCell(count: count, bucket: bucket, subtitle: subtitle)
+        }
     }
 
     private var needsYouCount: Int {

@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     @Injected(\.pushRegistrar) private var pushRegistrar: PushRegistrar
     @Injected(\.pendingQueueDrainer) private var pendingQueueDrainer: PendingQueueDrainer
+    @Injected(\.activityCoordinator) private var activityCoordinator: ActivityCoordinator
     @Injected(\.notificationStatusStore) private var statusStore: NotificationStatusStore
 
     func application(
@@ -38,6 +39,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             pushRegistrar.seedDefaultServerIfNeeded()
             dprint("[BarkAgent] seedDefaultServerIfNeeded done")
             pendingQueueDrainer.start()
+            activityCoordinator.start()   // 线 C:主 app 侧 LA 起/停协调
             #if DEBUG
             // SIM_SKIP_NOTIF_PROMPT=1 时跳过通知权限弹窗,用于 UI 截图/快照测试。
             if ProcessInfo.processInfo.environment["SIM_SKIP_NOTIF_PROMPT"] == "1" {

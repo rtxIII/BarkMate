@@ -95,6 +95,14 @@ extension Container {
         .singleton
     }
 
+    /// Onboarding 偏好存储(空态 hero「不再提示」等,共享 UserDefaults)。
+    var onboardingPrefsStore: Factory<OnboardingPrefsStore> {
+        self {
+            OnboardingPrefsStore(defaults: ProcessInfo.processInfo.barkAgentTestDefaults)
+        }
+        .singleton
+    }
+
     /// 通知 / APNs 健康状态(用于 Setup tab 顶部 banner)。
     var notificationStatusStore: Factory<NotificationStatusStore> {
         self {
@@ -155,6 +163,17 @@ extension Container {
         }
         .singleton
     }
+
+    /// 线 C:Live Activity 协调器(主 app 侧起/停 LA)。
+    var activityCoordinator: Factory<ActivityCoordinator> {
+        self {
+            ActivityCoordinator(
+                modelContainer: Container.shared.sharedModelContainer(),
+                barkClient: Container.shared.barkClient()
+            )
+        }
+        .singleton
+    }
 }
 
 private extension ProcessInfo {
@@ -194,6 +213,13 @@ private struct UITestBarkClient: BarkClientProtocol {
         }
         return true
     }
+
+    func registerLiveActivity(
+        token: String,
+        aggregateKey: String,
+        serverURL: URL,
+        deviceKey: String
+    ) async throws {}
 }
 
 private extension Bundle {

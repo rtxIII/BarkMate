@@ -28,14 +28,6 @@ final class BarkMateScreenshotRegressionTests: XCTestCase {
         assertMatchesScreenshot(named: "agent-detail")
     }
 
-    func testHistoryScreenshotMatchesBaseline() {
-        launchApp(seedScenario: "search-history")
-
-        app.buttons["tab-history"].tap()
-        XCTAssertTrue(app.staticTexts["History Stale Probe"].waitForExistence(timeout: 5), app.debugDescription)
-        assertMatchesScreenshot(named: "history-seeded")
-    }
-
     func testSettingsSetupAndServerListScreenshotsMatchBaseline() {
         launchApp(seedScenario: "server-health")
 

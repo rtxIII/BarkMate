@@ -40,7 +40,7 @@ struct SettingsView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 MCConsoleHeader(
-                    crumbs: ["SYS", "SETTINGS", appVersion.uppercased()],
+                    crumbs: [],
                     title: "Settings"
                 ) {
                     MCIconButton("+") { showServerList = true }
@@ -68,7 +68,7 @@ struct SettingsView: View {
                     Button { showStalePicker = true } label: {
                         MCSettingRow(
                             title: "Stale timeout",
-                            detail: "Running > this window → auto-demote to History · Stale."
+                            detail: "Running > this window → auto-demote to Settled · Stale."
                         ) { MCSettingValue(staleTimeoutStore.threshold().displayLabel) }
                     }
                     .buttonStyle(.plain)
@@ -186,7 +186,18 @@ struct SettingsView: View {
 
     private var serversTrailing: String {
         let online = servers.filter { $0.state == .ok }.count
-        return "\(online < 10 ? "0\(online)" : "\(online)") · apns ok"
+        let count = online < 10 ? "0\(online)" : "\(online)"
+        // trailing 必须与下面两行真实状态自洽:token 未注册 → off;
+        // 已注册但无一台 server 就绪 → pending;两者都满足才是 ok。
+        let apns: String
+        if tokenStore.token() == nil {
+            apns = "apns off"
+        } else if online == 0 {
+            apns = "apns pending"
+        } else {
+            apns = "apns ok"
+        }
+        return "\(count) · \(apns)"
     }
 
     private func serverDetail(_ server: Server) -> String {
@@ -227,13 +238,6 @@ struct SettingsView: View {
             let sound = SoundCatalog.sound(for: id)
         else { return "default" }
         return sound.displayName.lowercased()
-    }
-
-    private var appVersion: String {
-        let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "\(short) (\(build))"
     }
 
     // 外链目标。硬编码值集中在此,避免散落 view body。

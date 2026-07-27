@@ -11,7 +11,7 @@ v0.3 design 文档描述的是绿地设想，与当前**真实代码库 `BarkMat
 | v0.3 文档写的 | 真身代码（`BarkMate/`，git HEAD） | v0.5 处置 |
 |---------------|-----------------------------------|-----------|
 | 最低 iOS 17 | project.yml `deploymentTarget.iOS: 18.0` | 改为 iOS 18 |
-| 模块 `AgentKit` / `ActivityKit-Wrapper` / `LiveActivityExtension` | **均不存在**；LA 仅 `AgentTask.liveActivityID` 字段 + Models 内 ActivityAttributes 空壳 | 删虚构模块；LA target 本地链列 **P0** 待建（远程冷态 P1） |
+| 模块 `AgentKit` / `ActivityKit-Wrapper` / `LiveActivityExtension` | **均不存在**；LA 仅 `AgentTask.liveActivityID` 字段 + Models 内 ActivityAttributes 空壳 | 删虚构模块；LA UI **并入现有 `BarkMateWidgets` bundle**（不新开 target），本地链 **P0** / 远程冷态 P1 |
 | App Group `group.com.barkmate.shared` | 实际 `group.com.barkagent.shared` | 改真值 |
 | 4 Tab 含 Search、Memo（P1） | Search Tab 已删（commit `e55d988`）；Memo 概念下线（`AgentInboxItem` 仅承载旧协议 incoming） | 清账；不回收 |
 | 8 段 Processor 管线（NSE 内联） | 抽为纯函数 `PushPipeline.process()`（decrypt→parse→archive→degrade），NSE 是薄壳 | 按真身描述 |
@@ -23,7 +23,7 @@ v0.3 design 文档描述的是绿地设想，与当前**真实代码库 `BarkMat
 |----|--------|----------|--------|
 | **线 A · Glance 新鲜度** | "状态变 UI 不动" | NSE 落库后**立即** `WidgetCenter.reloadTimelines`；主 app 侧 upsert 后同刷 | **P0** |
 | **线 B · IA 瘦身** | "信息太多" | 3 Tab → 2 Tab；History 折入 Agents 的 Settled 段 | **P0** |
-| **线 C · Live Activity** | "离桌感知" 深化 | **本地链（P0）**：新增 LiveActivityExtension target + 主 app 起/更/闭 LA + NSE update 已存在 LA。**远程冷态（P1）**：app 被杀时 server LA push 更新 | **P0（本地）/ P1（远程）** |
+| **线 C · Live Activity** | "离桌感知" 深化 | **本地链（P0）**：LA UI 并入现有 `BarkMateWidgets` bundle + 主 app 起/更/闭 LA + NSE update 已存在 LA。**远程冷态（P1）**：app 被杀时 server LA push 更新 | **P0（本地）/ P1（远程）** |
 
 > **根因诊断（file:line 级）**：全工程**无任何** `WidgetCenter.reloadTimelines` 调用（`BarkMateWidgets.swift:11` 仅有一句"由主 app 触发"的注释，代码未实现）。NSE 已直接写 SwiftData（数据新鲜），但 glance 表面无人捅，只能靠 Widget 10 分钟轮询或 app 打开追平。这是"不即时"的确切病根，也是线 A 的最小闭环落点。
 
@@ -146,8 +146,8 @@ BarkMate/
 ├── NotificationServiceExtension/       # 薄壳：PushPipeline + 图片 + Darwin（+ 线 A reloadTimelines）
 │   └── Sources/NotificationService.swift + DI/Container+Extension.swift
 │
-├── Widgets/Sources/BarkMateWidgets.swift  # ActiveAgentsWidget（small/medium）
-└── LiveActivityExtension/              # 【P1 · 线 C 新增，当前不存在】
+└── Widgets/Sources/BarkMateWidgets.swift  # ActiveAgentsWidget（small/medium/+accessory 锁屏）
+                                           # + AgentLiveActivity（线 C：LA 并入此 bundle，不新开 target）
 ```
 
 ## 4. 数据模型（真身 · BarkAgentSchemaV1）
@@ -223,7 +223,7 @@ enum BodyType: String { case plainText, markdown }
 
 ## 5. App Group 共享策略
 
-**App Group: `group.com.barkagent.shared`**（`Store/AppGroup.swift`）。主 app / NSE / Widget（/ P1 LiveActivityExtension）共享：
+**App Group: `group.com.barkagent.shared`**（`Store/AppGroup.swift`）。主 app / NSE / Widget（Widget bundle 内含 Live Activity）共享：
 
 ```
 group.com.barkagent.shared
@@ -283,13 +283,13 @@ else / 失败:   PendingQueue.enqueue → .pending / .dropped
 // NSE processPipeline() switch outcome:
 case .archived, .pending:
     DarwinNotification.post(.itemDidArrive)
-    WidgetCenter.shared.reloadTimelines(ofKind: "ActiveAgentsWidget")  // 线 A 新增
+    WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.activeAgents)  // 线 A 新增
 ```
 
 设计约束与取舍：
 - **放 NSE 里而非只放主 app**：NSE 是"app 未打开也会跑"的唯一入口，这是"离桌即时"的关键。主 app 侧 upsert（demo push / drain）也补一次同样调用。
 - **成本可控**：`reloadTimelines` 是轻量信号，不在 NSE 24MB/30s 预算的风险区（真正耗资源的是解密/图片下载，已在前）。
-- **kind 常量化**：抽 `WidgetHistoryConstants.widgetKind` 式常量，NSE 与 Widget 共用，避免字符串漂移。
+- **kind 常量化**：抽 `WidgetKind.activeAgents` 常量（见 plan G1.1），NSE 与 Widget 共用，避免字符串漂移。
 - **降级**：`reloadTimelines` 失败不阻断 `contentHandler`（glance 刷新是尽力而为，不影响通知呈现）。
 
 ### 6.3 资源限制（不变）
@@ -362,8 +362,8 @@ Prompt 构造时 strip server URL / key / auth header（安全，§12.3）。
 
 ## 9. Live Activity 设计（线 C · 本地链 P0 / 远程冷态 P1）
 
-> **现状**：`LiveActivityExtension` target **不存在**；只有 `AgentTask.liveActivityID` 字段预留 + Models 内 ActivityAttributes 空壳。
-> **拆分**：**本地链 P0**（§9.1-9.2：target + 主 app 起/更/闭 + NSE update 已存在 LA，app 运行时即可用）；**远程冷态 P1**（§9.3：app 被杀时 server LA push，依赖 BarkMateServer）。
+> **现状**：无独立 LA target；只有 `AgentTask.liveActivityID` 字段预留（无 ActivityAttributes 空壳,G3.1 全新创建）。LA UI **并入现有 `BarkMateWidgets` bundle**（不新开 target，见 plan G3.1）。
+> **拆分**：**本地链 P0**（§9.1-9.2：LA 声明进 widget bundle + 主 app 起/更/闭 LA,app 前台/活跃时即可用;NSE 进程隔离无法碰 LA,只落库+Darwin）；**远程冷态 P1**（§9.3：app 挂起/被杀时 server LA push，依赖 BarkMateServer）。
 
 ### 9.1 ActivityAttributes
 
@@ -387,16 +387,17 @@ struct AgentActivityAttributes: ActivityAttributes {
 | 操作 | 触发者 | 约束 | 优先级 |
 |------|--------|------|--------|
 | 启动 | 主 app（前/后台） | **NSE 无法 `Activity.request`**——本地首启靠主 app | **P0** |
-| 更新 | NSE（每次推送）+ 主 app | `Activity.update(...)`（NSE 只更新已存在 LA） | **P0** |
-| 结束 | NSE（终态）/ 主 app（用户归档） | `Activity.end(dismissalPolicy: .immediate)` | **P0** |
-| 远程冷态更新 | server `liveactivity` push | app 被杀时唯一通道，依赖 Server | P1 |
+| 更新 | **主 app（coordinator reconcile）** | **NSE 无法 update**:`Activity.activities` 进程隔离,extension 里恒为空(已验证)。本地更新只能主 app 进程,覆盖前台/活跃 | **P0** |
+| 结束 | 主 app（离开 needsYou / 用户归档） | `Activity.end(dismissalPolicy: .immediate)`;同样只能主 app | **P0** |
+| 远程冷态更新 | server `liveactivity` push | app 挂起/被杀时唯一通道，依赖 Server | P1 |
 
 启动规则（方案 X，来自旧 Bark 实现经验）：
 - `waiting_input` / `blocked` 的 (agentID+taskID) → 起一个 LA（最需注意的状态）
 - 转 `running` / `done` / `failed` / `stale` / 用户归档 → end 对应 LA
+- 保留 LA 且状态仍为 needsYou → update content state（前台链刷新）
 - 同时活跃 LA 上限 cap（默认 4），超过 LRU 驱逐
 - 仅 iOS 16.2+ 生效（Dynamic Island）；本 app 最低 iOS 18，无兼容负担
-- **本地链边界**：app 完全被系统杀掉时，主 app 与 NSE 都无法更新 LA（NSE 只能 update 不能 request，且被杀后 LA 已冻结）→ 冷态更新必须走 §9.3 远程 push（P1）
+- **本地链边界**：`Activity.request`/`update`/`end` 全部只能主 app 进程调（`activities` 进程隔离,NSE 恒空）。app 挂起或被系统杀掉时主 app 不跑 → 冷态/后台更新走不通,必须走 §9.3 远程 push（P1）
 
 ### 9.3 远程更新 push token 流程（依赖 Server 端 · P1）
 
@@ -496,6 +497,6 @@ PendingQueue 任务类型（真身以 `PendingQueue` 落 parsed push 为主；�
 | NSE 结构 | 8 段内联 Processor | 纯函数 `PushPipeline` + 薄壳 NSE |
 | Stale | `StatusEngine` 定时写库 | `effectiveStatus` 惰性派生（不写库） |
 | Glance 新鲜度 | 未定义 | **线 A：NSE 落库即 reloadTimelines** |
-| 模块 | AgentKit/LA-Wrapper/LA-Ext | 均无；LA-Ext 列 P1 |
+| 模块 | AgentKit/LA-Wrapper/LA-Ext | 均无；LA UI 并入现有 Widgets bundle（不新开 target） |
 | Live Activity | "完整集成" | 空壳；**本地链 P0 + 远程冷态 P1**（后者依赖 Server LA push） |
 | 虚构模块 | 有 | 已清除，对齐真实 Packages 布局 |

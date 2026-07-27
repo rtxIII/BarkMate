@@ -255,6 +255,7 @@ struct SetupView: View {
     private func sendDemoPush() {
         DemoPushInjector.injectNextStep(into: modelContainer)
         DarwinNotification.post(.itemDidArrive)
+        GlanceRefresh.reload()   // 线 A:落库后同刷 glance,与推送路径一致
         demoConfirmed = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             demoConfirmed = false
